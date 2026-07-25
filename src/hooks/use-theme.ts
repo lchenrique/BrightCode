@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react'
 
-export type Theme =
-  | 'dark'
-  | 'light'
+export type ColorMode = 'light' | 'dark' | 'system'
+
+export type ThemePreset =
+  | 'default'
   | 'claude'
   | 'cyberpunk'
   | 'candyland'
@@ -23,86 +24,82 @@ export type Theme =
   | 'tokyonight'
   | 'nordic'
   | 'solarized'
-  | 'system'
 
-const STORAGE_KEY = 'brightcode:theme'
-const ALL_THEME_CLASSES = [
-  'dark',
-  'light',
-  'theme-catppuccin',
-  'theme-supabase',
-  'theme-amethyst',
-  'theme-cosmic',
-  'theme-tokyonight',
-  'theme-nordic',
-  'theme-solarized',
-]
-
-const POLITRON_DATA_THEMES = [
-  'cafeine',
-  'candyland',
-  'claude',
-  'dark-matter',
-  'violet-bloom',
-  'tangerine',
-  't3chat',
-  'cyberpunk',
-  'terminal-muted',
-  'omegon',
-  'msn',
-  'zen',
-  'melancholik',
-]
+const STORAGE_MODE = 'brightcode:color-mode'
+const STORAGE_PRESET = 'brightcode:theme-preset'
 
 export function useTheme() {
-  const [theme, setThemeState] = useState<Theme>(() => {
+  const [colorMode, setColorModeState] = useState<ColorMode>(() => {
     if (typeof window === 'undefined') return 'dark'
-    return (localStorage.getItem(STORAGE_KEY) as Theme) || 'dark'
+    return (localStorage.getItem(STORAGE_MODE) as ColorMode) || 'dark'
+  })
+
+  const [themePreset, setThemePresetState] = useState<ThemePreset>(() => {
+    if (typeof window === 'undefined') return 'default'
+    return (localStorage.getItem(STORAGE_PRESET) as ThemePreset) || 'default'
   })
 
   useEffect(() => {
     const root = document.documentElement
 
-    const applyTheme = (t: Theme) => {
-      root.classList.remove(...ALL_THEME_CLASSES)
-
-      if (t === 'system') {
-        const systemDark = window.matchMedia('(prefers-color-scheme: dark)').matches
+    const applyTheme = (mode: ColorMode, preset: ThemePreset) => {
+      // 1. Set data-theme for preset
+      if (preset === 'default') {
         root.removeAttribute('data-theme')
-        root.classList.add(systemDark ? 'dark' : 'light')
-      } else if (t === 'dark') {
-        root.removeAttribute('data-theme')
-        root.classList.add('dark')
-      } else if (t === 'light') {
-        root.removeAttribute('data-theme')
-        root.classList.add('light')
-      } else if (POLITRON_DATA_THEMES.includes(t)) {
-        root.setAttribute('data-theme', t)
-        root.classList.add('dark')
       } else {
-        root.removeAttribute('data-theme')
-        root.classList.add('dark', `theme-${t}`)
+        root.setAttribute('data-theme', preset)
+      }
+
+      // 2. Apply dark/light class
+      const isDark =
+        mode === 'dark' ||
+        (mode === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches)
+
+      if (isDark) {
+        root.classList.add('dark')
+        root.classList.remove('light')
+      } else {
+        root.classList.remove('dark')
+        root.classList.add('light')
       }
     }
 
-    applyTheme(theme)
-    localStorage.setItem(STORAGE_KEY, theme)
+    applyTheme(colorMode, themePreset)
 
-    if (theme === 'system') {
+    localStorage.setItem(STORAGE_MODE, colorMode)
+    localStorage.setItem(STORAGE_PRESET, themePreset)
+
+    if (colorMode === 'system') {
       const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)')
       const listener = (e: MediaQueryListEvent) => {
-        root.classList.remove(...ALL_THEME_CLASSES)
-        root.removeAttribute('data-theme')
-        root.classList.add(e.matches ? 'dark' : 'light')
+        if (e.matches) {
+          root.classList.add('dark')
+          root.classList.remove('light')
+        } else {
+          root.classList.remove('dark')
+          root.classList.add('light')
+        }
       }
       mediaQuery.addEventListener('change', listener)
       return () => mediaQuery.removeEventListener('change', listener)
     }
-  }, [theme])
+  }, [colorMode, themePreset])
 
-  const setTheme = (newTheme: Theme) => {
-    setThemeState(newTheme)
+  const setColorMode = (mode: ColorMode) => setColorModeState(mode)
+  const setThemePreset = (preset: ThemePreset) => setThemePresetState(preset)
+
+  return {
+    colorMode,
+    setColorMode,
+    themePreset,
+    setThemePreset,
+    theme: themePreset,
+    setTheme: (val: any) => {
+      if (val === 'light' || val === 'dark' || val === 'system') {
+        setColorModeState(val)
+      } else {
+        setThemePresetState(val)
+      }
+    },
   }
-
-  return { theme, setTheme }
 }

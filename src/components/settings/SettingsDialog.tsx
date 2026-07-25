@@ -208,71 +208,90 @@ function GeneralTab() {
 /* Appearance tab                                                       */
 /* ------------------------------------------------------------------ */
 
-const themes = [
-  { id: 'dark', label: 'BrightCode Dark', icon: Moon, bg: 'bg-[#18181b]', sidebar: 'bg-[#0f0f11]', accent: 'bg-amber-500' },
-  { id: 'light', label: 'BrightCode Light', icon: Sun, bg: 'bg-[#ffffff]', sidebar: 'bg-[#f4f4f5]', accent: 'bg-amber-600' },
-  { id: 'claude', label: 'Anthropic Claude', icon: Moon, bg: 'bg-[#1d1b18]', sidebar: 'bg-[#171513]', accent: 'bg-amber-600' },
-  { id: 'cyberpunk', label: 'Cyberpunk Neon', icon: Moon, bg: 'bg-[#0d0f18]', sidebar: 'bg-[#080910]', accent: 'bg-pink-500' },
-  { id: 'candyland', label: 'Candyland Pink', icon: Moon, bg: 'bg-[#1f1924]', sidebar: 'bg-[#17121c]', accent: 'bg-pink-400' },
-  { id: 'dark-matter', label: 'Dark Matter Mono', icon: Moon, bg: 'bg-[#121212]', sidebar: 'bg-[#0a0a0a]', accent: 'bg-emerald-400' },
-  { id: 'cafeine', label: 'Cafeine Coffee', icon: Sun, bg: 'bg-[#faf6f0]', sidebar: 'bg-[#f2ece4]', accent: 'bg-amber-800' },
-  { id: 'violet-bloom', label: 'Violet Bloom', icon: Moon, bg: 'bg-[#1a1429]', sidebar: 'bg-[#130e20]', accent: 'bg-purple-400' },
-  { id: 'tangerine', label: 'Tangerine Sunset', icon: Moon, bg: 'bg-[#1f1410]', sidebar: 'bg-[#170e0a]', accent: 'bg-orange-500' },
-  { id: 't3chat', label: 'T3 Chat', icon: Moon, bg: 'bg-[#12141c]', sidebar: 'bg-[#0b0c12]', accent: 'bg-indigo-400' },
-  { id: 'terminal-muted', label: 'Terminal Muted', icon: Moon, bg: 'bg-[#141619]', sidebar: 'bg-[#0d0e10]', accent: 'bg-teal-400' },
-  { id: 'msn', label: 'MSN Retro', icon: Sun, bg: 'bg-[#e8f1f5]', sidebar: 'bg-[#d8e6ee]', accent: 'bg-blue-600' },
-  { id: 'zen', label: 'Zen Minimalist', icon: Moon, bg: 'bg-[#161616]', sidebar: 'bg-[#0e0e0e]', accent: 'bg-zinc-400' },
-  { id: 'melancholik', label: 'Melancholik Slate', icon: Moon, bg: 'bg-[#151922]', sidebar: 'bg-[#0d1017]', accent: 'bg-slate-400' },
-  { id: 'catppuccin', label: 'Catppuccin Mocha', icon: Moon, bg: 'bg-[#1e1e2e]', sidebar: 'bg-[#181825]', accent: 'bg-purple-400' },
-  { id: 'supabase', label: 'Supabase Emerald', icon: Moon, bg: 'bg-[#121212]', sidebar: 'bg-[#0c0c0c]', accent: 'bg-emerald-500' },
-  { id: 'amethyst', label: 'Amethyst Haze', icon: Moon, bg: 'bg-[#18122B]', sidebar: 'bg-[#110c20]', accent: 'bg-fuchsia-500' },
-  { id: 'cosmic', label: 'Cosmic Night', icon: Moon, bg: 'bg-[#0b132b]', sidebar: 'bg-[#070d20]', accent: 'bg-cyan-400' },
-  { id: 'tokyonight', label: 'Tokyo Night', icon: Moon, bg: 'bg-[#1a1b26]', sidebar: 'bg-[#16161e]', accent: 'bg-pink-500' },
-  { id: 'nordic', label: 'Nordic Frost', icon: Moon, bg: 'bg-[#1c2331]', sidebar: 'bg-[#161b26]', accent: 'bg-sky-400' },
-  { id: 'solarized', label: 'Solarized Amber', icon: Moon, bg: 'bg-[#073642]', sidebar: 'bg-[#002b36]', accent: 'bg-amber-400' },
-  { id: 'system', label: 'System Theme', icon: Monitor, bg: 'bg-zinc-900', sidebar: 'bg-zinc-800', accent: 'bg-amber-500' },
+const colorModes = [
+  { id: 'light', label: 'Light', icon: Sun },
+  { id: 'dark', label: 'Dark', icon: Moon },
+  { id: 'system', label: 'System', icon: Monitor },
 ] as const
 
-export type ThemeId = (typeof themes)[number]['id']
+const themePresets = [
+  { id: 'default', label: 'BrightCode', bg: 'bg-[#18181b]', sidebar: 'bg-[#0f0f11]', accent: 'bg-amber-500' },
+  { id: 'claude', label: 'Anthropic Claude', bg: 'bg-[#1d1b18]', sidebar: 'bg-[#171513]', accent: 'bg-amber-600' },
+  { id: 'cyberpunk', label: 'Cyberpunk Neon', bg: 'bg-[#0d0f18]', sidebar: 'bg-[#080910]', accent: 'bg-pink-500' },
+  { id: 'candyland', label: 'Candyland Pink', bg: 'bg-[#1f1924]', sidebar: 'bg-[#17121c]', accent: 'bg-pink-400' },
+  { id: 'dark-matter', label: 'Dark Matter Mono', bg: 'bg-[#121212]', sidebar: 'bg-[#0a0a0a]', accent: 'bg-emerald-400' },
+  { id: 'cafeine', label: 'Cafeine Coffee', bg: 'bg-[#faf6f0]', sidebar: 'bg-[#f2ece4]', accent: 'bg-amber-800' },
+  { id: 'violet-bloom', label: 'Violet Bloom', bg: 'bg-[#1a1429]', sidebar: 'bg-[#130e20]', accent: 'bg-purple-400' },
+  { id: 'tangerine', label: 'Tangerine Sunset', bg: 'bg-[#1f1410]', sidebar: 'bg-[#170e0a]', accent: 'bg-orange-500' },
+  { id: 't3chat', label: 'T3 Chat', bg: 'bg-[#12141c]', sidebar: 'bg-[#0b0c12]', accent: 'bg-indigo-400' },
+  { id: 'terminal-muted', label: 'Terminal Muted', bg: 'bg-[#141619]', sidebar: 'bg-[#0d0e10]', accent: 'bg-teal-400' },
+  { id: 'msn', label: 'MSN Retro', bg: 'bg-[#e8f1f5]', sidebar: 'bg-[#d8e6ee]', accent: 'bg-blue-600' },
+  { id: 'zen', label: 'Zen Minimalist', bg: 'bg-[#161616]', sidebar: 'bg-[#0e0e0e]', accent: 'bg-zinc-400' },
+  { id: 'melancholik', label: 'Melancholik Slate', bg: 'bg-[#151922]', sidebar: 'bg-[#0d1017]', accent: 'bg-slate-400' },
+  { id: 'catppuccin', label: 'Catppuccin Mocha', bg: 'bg-[#1e1e2e]', sidebar: 'bg-[#181825]', accent: 'bg-purple-400' },
+  { id: 'supabase', label: 'Supabase Emerald', bg: 'bg-[#121212]', sidebar: 'bg-[#0c0c0c]', accent: 'bg-emerald-500' },
+  { id: 'amethyst', label: 'Amethyst Haze', bg: 'bg-[#18122B]', sidebar: 'bg-[#110c20]', accent: 'bg-fuchsia-500' },
+  { id: 'cosmic', label: 'Cosmic Night', bg: 'bg-[#0b132b]', sidebar: 'bg-[#070d20]', accent: 'bg-cyan-400' },
+  { id: 'tokyonight', label: 'Tokyo Night', bg: 'bg-[#1a1b26]', sidebar: 'bg-[#16161e]', accent: 'bg-pink-500' },
+  { id: 'nordic', label: 'Nordic Frost', bg: 'bg-[#1c2331]', sidebar: 'bg-[#161b26]', accent: 'bg-sky-400' },
+  { id: 'solarized', label: 'Solarized Amber', bg: 'bg-[#073642]', sidebar: 'bg-[#002b36]', accent: 'bg-amber-400' },
+] as const
+
+export type ThemeId = (typeof themePresets)[number]['id']
 
 function ThemeMockCard({
-  id,
   bg,
   sidebar,
   accent,
+  isLightMode,
 }: {
-  id: string
   bg: string
   sidebar: string
   accent: string
+  isLightMode: boolean
 }) {
-  if (id === 'system') {
-    return (
-      <div className="relative flex h-20 w-full overflow-hidden rounded-xl border border-border/60 shadow-sm">
-        <div className="flex h-full w-1/2 flex-col justify-between bg-zinc-100 p-2 text-zinc-900">
-          <div className="h-1.5 w-8 rounded bg-zinc-300" />
-          <div className="h-1.5 w-12 rounded bg-amber-600" />
-        </div>
-        <div className="flex h-full w-1/2 flex-col justify-between bg-zinc-950 p-2 text-zinc-100">
-          <div className="h-1.5 w-8 rounded bg-zinc-700" />
-          <div className="h-1.5 w-12 rounded bg-amber-500" />
-        </div>
-      </div>
-    )
-  }
-
   return (
-    <div className={cn('relative flex h-20 w-full overflow-hidden rounded-xl border border-border/60 p-2.5 shadow-sm transition-all', bg)}>
+    <div
+      className={cn(
+        'relative flex h-16 w-full overflow-hidden rounded-xl border border-border/60 p-2 shadow-sm transition-all',
+        isLightMode ? 'bg-white' : bg,
+      )}
+    >
       {/* Sidebar mini */}
-      <div className={cn('flex h-full w-7 flex-col gap-1 rounded-lg p-1', sidebar)}>
-        <div className="h-1.5 w-full rounded bg-white/20" />
-        <div className="h-1.5 w-3/4 rounded bg-white/10" />
+      <div
+        className={cn(
+          'flex h-full w-6 flex-col gap-1 rounded-lg p-1',
+          isLightMode ? 'bg-zinc-100' : sidebar,
+        )}
+      >
+        <div
+          className={cn(
+            'h-1.5 w-full rounded',
+            isLightMode ? 'bg-zinc-300' : 'bg-white/20',
+          )}
+        />
+        <div
+          className={cn(
+            'h-1.5 w-3/4 rounded',
+            isLightMode ? 'bg-zinc-200' : 'bg-white/10',
+          )}
+        />
       </div>
       {/* Content mini */}
-      <div className="ml-2.5 flex flex-1 flex-col justify-between py-0.5">
+      <div className="ml-2 flex flex-1 flex-col justify-between py-0.5">
         <div className="space-y-1">
-          <div className="h-1.5 w-16 rounded bg-white/20" />
-          <div className="h-1.5 w-24 rounded bg-white/10" />
+          <div
+            className={cn(
+              'h-1.5 w-16 rounded',
+              isLightMode ? 'bg-zinc-300' : 'bg-white/20',
+            )}
+          />
+          <div
+            className={cn(
+              'h-1.5 w-24 rounded',
+              isLightMode ? 'bg-zinc-200' : 'bg-white/10',
+            )}
+          />
         </div>
         <div className={cn('h-2 w-5 rounded-full', accent)} />
       </div>
@@ -281,36 +300,76 @@ function ThemeMockCard({
 }
 
 function AppearanceTab() {
-  const { theme, setTheme } = useTheme()
+  const { colorMode, setColorMode, themePreset, setThemePreset } = useTheme()
 
   return (
-    <div className="flex flex-col gap-3">
-      <SectionLabel>Theme Presets</SectionLabel>
-      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3.5">
-        {themes.map(({ id, label, icon: Icon, bg, sidebar, accent }) => {
-          const selected = theme === id
-          return (
-            <button
-              key={id}
-              type="button"
-              onClick={() => setTheme(id as any)}
-              className="group flex flex-col gap-2 text-left cursor-pointer"
-            >
-              <div
+    <div className="flex flex-col gap-6">
+      {/* Section 1: Color Mode (Light / Dark / System) */}
+      <div className="flex flex-col gap-2.5">
+        <SectionLabel>Appearance Mode</SectionLabel>
+        <div className="grid grid-cols-3 gap-3">
+          {colorModes.map(({ id, label, icon: Icon }) => {
+            const selected = colorMode === id
+            return (
+              <button
+                key={id}
+                type="button"
+                onClick={() => setColorMode(id)}
                 className={cn(
-                  'w-full overflow-hidden rounded-xl border border-border/60 transition-all group-hover:border-border',
-                  selected ? 'ring-primary ring-2 border-transparent' : 'opacity-85 hover:opacity-100',
+                  'flex items-center justify-center gap-2 rounded-xl border py-2.5 px-3 text-xs font-medium transition-all cursor-pointer',
+                  selected
+                    ? 'border-primary bg-primary/10 text-primary font-semibold'
+                    : 'border-border/60 hover:border-border text-muted-foreground hover:text-foreground',
                 )}
               >
-                <ThemeMockCard id={id} bg={bg} sidebar={sidebar} accent={accent} />
-              </div>
-              <span className="flex items-center gap-1.5 text-[12px] font-medium text-foreground/90">
-                <Icon className={cn('size-3.5', selected ? 'text-primary' : 'text-muted-foreground')} />
+                <Icon className="size-4" />
                 {label}
-              </span>
-            </button>
-          )
-        })}
+              </button>
+            )
+          })}
+        </div>
+      </div>
+
+      {/* Section 2: Theme Presets & Styles */}
+      <div className="flex flex-col gap-2.5">
+        <SectionLabel>Theme Style & Palette</SectionLabel>
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+          {themePresets.map(({ id, label, bg, sidebar, accent }) => {
+            const selected = themePreset === id
+            return (
+              <button
+                key={id}
+                type="button"
+                onClick={() => setThemePreset(id as any)}
+                className="group flex flex-col gap-1.5 text-left cursor-pointer"
+              >
+                <div
+                  className={cn(
+                    'w-full overflow-hidden rounded-xl border border-border/60 transition-all group-hover:border-border',
+                    selected
+                      ? 'ring-primary ring-2 border-transparent'
+                      : 'opacity-85 hover:opacity-100',
+                  )}
+                >
+                  <ThemeMockCard
+                    bg={bg}
+                    sidebar={sidebar}
+                    accent={accent}
+                    isLightMode={colorMode === 'light'}
+                  />
+                </div>
+                <span
+                  className={cn(
+                    'text-[12px] font-medium transition-colors',
+                    selected ? 'text-primary font-semibold' : 'text-foreground/80',
+                  )}
+                >
+                  {label}
+                </span>
+              </button>
+            )
+          })}
+        </div>
       </div>
     </div>
   )
