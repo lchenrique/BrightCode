@@ -209,40 +209,58 @@ function GeneralTab() {
 /* ------------------------------------------------------------------ */
 
 const themes = [
-  { id: 'light', label: 'Light Mode', icon: Sun },
-  { id: 'dark', label: 'Dark Mode', icon: Moon },
-  { id: 'system', label: 'System', icon: Monitor },
+  { id: 'dark', label: 'Dark Mode', icon: Moon, bg: 'bg-[#18181b]', sidebar: 'bg-[#0f0f11]', accent: 'bg-amber-500' },
+  { id: 'light', label: 'Light Mode', icon: Sun, bg: 'bg-[#ffffff]', sidebar: 'bg-[#f4f4f5]', accent: 'bg-amber-600' },
+  { id: 'midnight', label: 'Midnight Blue', icon: Moon, bg: 'bg-[#0f172a]', sidebar: 'bg-[#0b1120]', accent: 'bg-blue-500' },
+  { id: 'dracula', label: 'Cyber Violet', icon: Moon, bg: 'bg-[#181124]', sidebar: 'bg-[#120d1c]', accent: 'bg-purple-500' },
+  { id: 'emerald', label: 'Emerald Mint', icon: Moon, bg: 'bg-[#062016]', sidebar: 'bg-[#041710]', accent: 'bg-emerald-400' },
+  { id: 'sunset', label: 'Sunset Coral', icon: Moon, bg: 'bg-[#241315]', sidebar: 'bg-[#1a0c0e]', accent: 'bg-rose-500' },
+  { id: 'system', label: 'System', icon: Monitor, bg: 'bg-zinc-900', sidebar: 'bg-zinc-800', accent: 'bg-amber-500' },
 ] as const
 
 export type ThemeId = (typeof themes)[number]['id']
 
-function ThemeMock({ variant }: { variant: 'light' | 'dark' }) {
-  const light = variant === 'light'
+function ThemeMockCard({
+  id,
+  bg,
+  sidebar,
+  accent,
+}: {
+  id: string
+  bg: string
+  sidebar: string
+  accent: string
+}) {
+  if (id === 'system') {
+    return (
+      <div className="relative flex h-20 w-full overflow-hidden rounded-xl border border-border/60 shadow-sm">
+        <div className="flex h-full w-1/2 flex-col justify-between bg-zinc-100 p-2 text-zinc-900">
+          <div className="h-1.5 w-8 rounded bg-zinc-300" />
+          <div className="h-1.5 w-12 rounded bg-amber-600" />
+        </div>
+        <div className="flex h-full w-1/2 flex-col justify-between bg-zinc-950 p-2 text-zinc-100">
+          <div className="h-1.5 w-8 rounded bg-zinc-700" />
+          <div className="h-1.5 w-12 rounded bg-amber-500" />
+        </div>
+      </div>
+    )
+  }
+
   return (
-    <div
-      className={cn(
-        'flex h-full flex-1 flex-col gap-1.5 p-2',
-        light ? 'bg-white' : 'bg-zinc-900',
-      )}
-    >
-      <div
-        className={cn(
-          'h-2 w-2/3 rounded-sm',
-          light ? 'bg-zinc-300' : 'bg-zinc-700',
-        )}
-      />
-      <div
-        className={cn(
-          'h-2 w-1/2 rounded-sm',
-          light ? 'bg-zinc-200' : 'bg-zinc-800',
-        )}
-      />
-      <div
-        className={cn(
-          'mt-auto h-4 w-full rounded-sm',
-          light ? 'bg-zinc-200' : 'bg-zinc-800',
-        )}
-      />
+    <div className={cn('relative flex h-20 w-full overflow-hidden rounded-xl border border-border/60 p-2.5 shadow-sm transition-all', bg)}>
+      {/* Sidebar mini */}
+      <div className={cn('flex h-full w-7 flex-col gap-1 rounded-lg p-1', sidebar)}>
+        <div className="h-1.5 w-full rounded bg-white/20" />
+        <div className="h-1.5 w-3/4 rounded bg-white/10" />
+      </div>
+      {/* Content mini */}
+      <div className="ml-2.5 flex flex-1 flex-col justify-between py-0.5">
+        <div className="space-y-1">
+          <div className="h-1.5 w-16 rounded bg-white/20" />
+          <div className="h-1.5 w-24 rounded bg-white/10" />
+        </div>
+        <div className={cn('h-2 w-5 rounded-full', accent)} />
+      </div>
     </div>
   )
 }
@@ -252,34 +270,27 @@ function AppearanceTab() {
 
   return (
     <div className="flex flex-col gap-3">
-      <SectionLabel>Theme</SectionLabel>
-      <div className="grid grid-cols-3 gap-4">
-        {themes.map(({ id, label, icon: Icon }) => {
+      <SectionLabel>Theme Presets</SectionLabel>
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3.5">
+        {themes.map(({ id, label, icon: Icon, bg, sidebar, accent }) => {
           const selected = theme === id
           return (
             <button
               key={id}
               type="button"
-              onClick={() => setTheme(id)}
-              className="flex flex-col gap-2 text-left"
+              onClick={() => setTheme(id as any)}
+              className="group flex flex-col gap-2 text-left cursor-pointer"
             >
-              <span
+              <div
                 className={cn(
-                  'border-border/60 flex h-24 overflow-hidden rounded-lg border transition-shadow',
-                  selected && 'ring-primary ring-2',
+                  'w-full overflow-hidden rounded-xl border border-border/60 transition-all group-hover:border-border',
+                  selected ? 'ring-primary ring-2 border-transparent' : 'opacity-85 hover:opacity-100',
                 )}
               >
-                {id === 'system' ? (
-                  <>
-                    <ThemeMock variant="light" />
-                    <ThemeMock variant="dark" />
-                  </>
-                ) : (
-                  <ThemeMock variant={id} />
-                )}
-              </span>
-              <span className="flex items-center gap-1.5 text-[12px] font-medium">
-                <Icon className="text-muted-foreground size-3.5" />
+                <ThemeMockCard id={id} bg={bg} sidebar={sidebar} accent={accent} />
+              </div>
+              <span className="flex items-center gap-1.5 text-[12px] font-medium text-foreground/90">
+                <Icon className={cn('size-3.5', selected ? 'text-primary' : 'text-muted-foreground')} />
                 {label}
               </span>
             </button>
