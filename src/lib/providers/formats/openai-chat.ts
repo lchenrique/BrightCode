@@ -183,10 +183,30 @@ export const openaiChatHandler: FormatHandler = {
             content: typeof m.content === 'string' ? [{ type: 'input_text', text: m.content }] : m.content,
           })
         } else if (m.role === 'assistant') {
+          const rawToolCalls = (m as unknown as { toolCalls?: Array<{ id: string; name: string; input: unknown }> }).toolCalls
+          if (Array.isArray(rawToolCalls) && rawToolCalls.length > 0) {
+            for (const tc of rawToolCalls) {
+              input.push({
+                type: 'function_call',
+                call_id: tc.id,
+                name: tc.name,
+                arguments: typeof tc.input === 'string' ? tc.input : JSON.stringify(tc.input ?? {}),
+              })
+            }
+          }
+          if (typeof m.content === 'string' && m.content.length > 0) {
+            input.push({
+              type: 'message',
+              role: 'assistant',
+              content: [{ type: 'output_text', text: m.content }],
+            })
+          }
+        } else if (m.role === 'tool') {
+          const toolCallId = (m as unknown as { toolCallId?: string; id?: string }).toolCallId ?? (m as unknown as { id?: string }).id ?? ''
           input.push({
-            type: 'message',
-            role: 'assistant',
-            content: typeof m.content === 'string' ? [{ type: 'output_text', text: m.content }] : m.content,
+            type: 'function_call_output',
+            call_id: toolCallId,
+            output: typeof m.content === 'string' ? m.content : JSON.stringify(m.content),
           })
         }
       }
@@ -215,6 +235,15 @@ export const openaiChatHandler: FormatHandler = {
           summary: 'auto',
         },
         include: ['reasoning.encrypted_content'],
+      }
+
+      if (params.tools && params.tools.length > 0) {
+        codexBody.tools = params.tools.map((t) => ({
+          type: 'function',
+          name: t.name,
+          description: t.description,
+          parameters: t.parameters,
+        }))
       }
 
       const targetUrl = baseURL.endsWith('/responses')
@@ -356,6 +385,47 @@ export const openaiChatHandler: FormatHandler = {
 
         if (text) return { type: 'thinking_delta', text }
         return null
+      }
+
+      // ── Function/Tool call handling for Responses API ──
+      const item = parsed['item'] as Record<string, unknown> | undefined
+      if (item && item['type'] === 'function_call') {
+        const callId = (item['call_id'] as string) || (item['id'] as string) || 'call_0'
+        const name = (item['name'] as string) || ''
+        const argsStr = (item['arguments'] as string) || ''
+
+        if (eventType === 'response.output_item.added') {
+          toolArgBuffers.set(0, { id: callId, name, args: argsStr })
+          return { type: 'tool_use_start', id: callId, name }
+        }
+        if (eventType === 'response.output_item.done') {
+          let parsedArgs: unknown = argsStr
+          try {
+            parsedArgs = JSON.parse(argsStr)
+          } catch {
+            // keep raw string
+          }
+          return { type: 'tool_use_delta', id: callId, input: parsedArgs }
+        }
+      }
+
+      if (eventType === 'response.function_call_arguments.delta') {
+        const callId = (parsed['call_id'] as string) || (parsed['item_id'] as string) || 'call_0'
+        const deltaArg = typeof parsed['delta'] === 'string' ? parsed['delta'] : ''
+        let buf = toolArgBuffers.get(0)
+        if (!buf) {
+          buf = { id: callId, name: '', args: '' }
+          toolArgBuffers.set(0, buf)
+          return { type: 'tool_use_start', id: callId, name: '' }
+        }
+        buf.args += deltaArg
+        let parsedArgs: unknown = buf.args
+        try {
+          parsedArgs = JSON.parse(buf.args)
+        } catch {
+          // partial json
+        }
+        return { type: 'tool_use_delta', id: callId, input: parsedArgs }
       }
 
       if (
