@@ -84,8 +84,8 @@ function createWindow(): void {
   mainWindow = new BrowserWindow({
     width: 1280,
     height: 820,
-    minWidth: 960,
-    minHeight: 600,
+    minWidth: 400,
+    minHeight: 400,
     show: false,
     backgroundColor: '#0a0c10',
     title: 'BrightCode',
