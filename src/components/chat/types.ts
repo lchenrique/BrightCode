@@ -15,6 +15,8 @@ export interface Message {
   id: string
   role: Role
   content: string
+  /** Internal thinking / reasoning trace. */
+  thinking?: string
   model?: string
   streaming?: boolean
   /** Extra context for error messages (stack, request url, etc). */

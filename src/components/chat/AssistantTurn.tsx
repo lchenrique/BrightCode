@@ -160,7 +160,12 @@ export function AssistantTurn({
 
       {open && (
         <div className="border-border/40 bg-card/20 ml-1.5 flex flex-col gap-2 rounded-lg border py-2 pl-4 pr-3">
-          {items.length === 0 ? (
+          {assistant.thinking && (
+            <div className="border-border/30 text-muted-foreground/90 mb-1 max-h-60 overflow-y-auto whitespace-pre-wrap rounded border p-2 text-[12px] font-mono">
+              {assistant.thinking}
+            </div>
+          )}
+          {items.length === 0 && !assistant.thinking ? (
             <div className="text-muted-foreground/80 flex items-center gap-2 text-[12.5px]">
               <Brain className="size-3.5" />
               <span>Thinking process</span>

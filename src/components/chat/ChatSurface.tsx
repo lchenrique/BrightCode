@@ -218,7 +218,7 @@ export function ChatSurface({
           case 'text_delta':
             return { ...m, content: m.content + chunk.text }
           case 'thinking_delta':
-            return { ...m, content: m.content + chunk.text }
+            return { ...m, thinking: (m.thinking ?? '') + chunk.text }
           case 'tool_use_start':
             if (!buffers.toolCalls.some((x) => x.id === chunk.id)) {
               buffers.toolCalls.push({ id: chunk.id, name: chunk.name, input: {} })

@@ -321,21 +321,41 @@ export const openaiChatHandler: FormatHandler = {
 
       // ── Responses API handling (Codex responses endpoint) ──
       const eventType = typeof parsed['type'] === 'string' ? parsed['type'] : event.event
+      const itemType = (parsed['item'] as Record<string, unknown> | undefined)?.type
+      const partType = (parsed['part'] as Record<string, unknown> | undefined)?.type
+
       const isReasoningEvent =
         eventType?.includes('reasoning') ||
+        itemType === 'reasoning' ||
+        partType === 'reasoning' ||
+        partType === 'reasoning_summary' ||
         typeof parsed['reasoning'] === 'string' ||
-        typeof parsed['reasoning_delta'] === 'string'
+        typeof parsed['reasoning'] === 'object' ||
+        typeof parsed['reasoning_delta'] === 'string' ||
+        typeof parsed['reasoning_summary'] === 'string'
 
       if (isReasoningEvent) {
-        const text =
-          typeof parsed['delta'] === 'string'
-            ? parsed['delta']
-            : typeof parsed['reasoning'] === 'string'
-              ? parsed['reasoning']
-              : typeof parsed['text'] === 'string'
-                ? parsed['text']
-                : ''
+        let text = ''
+        if (typeof parsed['delta'] === 'string') {
+          text = parsed['delta']
+        } else if (typeof parsed['text'] === 'string') {
+          text = parsed['text']
+        } else if (typeof parsed['reasoning'] === 'string') {
+          text = parsed['reasoning']
+        } else if (typeof parsed['reasoning_delta'] === 'string') {
+          text = parsed['reasoning_delta']
+        } else if (typeof parsed['reasoning_summary'] === 'string') {
+          text = parsed['reasoning_summary']
+        } else if (typeof parsed['summary'] === 'string') {
+          text = parsed['summary']
+        } else if (parsed['part'] && typeof (parsed['part'] as Record<string, unknown>)['text'] === 'string') {
+          text = (parsed['part'] as Record<string, unknown>)['text'] as string
+        } else if (parsed['item'] && typeof (parsed['item'] as Record<string, unknown>)['text'] === 'string') {
+          text = (parsed['item'] as Record<string, unknown>)['text'] as string
+        }
+
         if (text) return { type: 'thinking_delta', text }
+        return null
       }
 
       if (
