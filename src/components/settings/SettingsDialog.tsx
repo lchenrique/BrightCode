@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useTheme } from '@/hooks/use-theme'
 import {
   ChartBar,
   CircleUser,
@@ -213,7 +214,7 @@ const themes = [
   { id: 'system', label: 'System', icon: Monitor },
 ] as const
 
-type ThemeId = (typeof themes)[number]['id']
+export type ThemeId = (typeof themes)[number]['id']
 
 function ThemeMock({ variant }: { variant: 'light' | 'dark' }) {
   const light = variant === 'light'
@@ -247,7 +248,7 @@ function ThemeMock({ variant }: { variant: 'light' | 'dark' }) {
 }
 
 function AppearanceTab() {
-  const [theme, setTheme] = useState<ThemeId>('dark')
+  const { theme, setTheme } = useTheme()
 
   return (
     <div className="flex flex-col gap-3">
