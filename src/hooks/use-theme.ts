@@ -1,15 +1,28 @@
 import { useEffect, useState } from 'react'
 
-export type Theme = 'dark' | 'light' | 'midnight' | 'dracula' | 'emerald' | 'sunset' | 'system'
+export type Theme =
+  | 'dark'
+  | 'light'
+  | 'catppuccin'
+  | 'supabase'
+  | 'amethyst'
+  | 'cosmic'
+  | 'tokyonight'
+  | 'nordic'
+  | 'solarized'
+  | 'system'
 
 const STORAGE_KEY = 'brightcode:theme'
 const ALL_THEME_CLASSES = [
   'dark',
   'light',
-  'theme-midnight',
-  'theme-dracula',
-  'theme-emerald',
-  'theme-sunset',
+  'theme-catppuccin',
+  'theme-supabase',
+  'theme-amethyst',
+  'theme-cosmic',
+  'theme-tokyonight',
+  'theme-nordic',
+  'theme-solarized',
 ]
 
 export function useTheme() {
@@ -32,7 +45,6 @@ export function useTheme() {
       } else if (t === 'light') {
         root.classList.add('light')
       } else {
-        // Preset themes inherit dark mode base + custom accent & background tokens
         root.classList.add('dark', `theme-${t}`)
       }
     }

@@ -209,13 +209,16 @@ function GeneralTab() {
 /* ------------------------------------------------------------------ */
 
 const themes = [
-  { id: 'dark', label: 'Dark Mode', icon: Moon, bg: 'bg-[#18181b]', sidebar: 'bg-[#0f0f11]', accent: 'bg-amber-500' },
-  { id: 'light', label: 'Light Mode', icon: Sun, bg: 'bg-[#ffffff]', sidebar: 'bg-[#f4f4f5]', accent: 'bg-amber-600' },
-  { id: 'midnight', label: 'Midnight Blue', icon: Moon, bg: 'bg-[#0f172a]', sidebar: 'bg-[#0b1120]', accent: 'bg-blue-500' },
-  { id: 'dracula', label: 'Cyber Violet', icon: Moon, bg: 'bg-[#181124]', sidebar: 'bg-[#120d1c]', accent: 'bg-purple-500' },
-  { id: 'emerald', label: 'Emerald Mint', icon: Moon, bg: 'bg-[#062016]', sidebar: 'bg-[#041710]', accent: 'bg-emerald-400' },
-  { id: 'sunset', label: 'Sunset Coral', icon: Moon, bg: 'bg-[#241315]', sidebar: 'bg-[#1a0c0e]', accent: 'bg-rose-500' },
-  { id: 'system', label: 'System', icon: Monitor, bg: 'bg-zinc-900', sidebar: 'bg-zinc-800', accent: 'bg-amber-500' },
+  { id: 'dark', label: 'BrightCode Dark', icon: Moon, bg: 'bg-[#18181b]', sidebar: 'bg-[#0f0f11]', accent: 'bg-amber-500' },
+  { id: 'light', label: 'BrightCode Light', icon: Sun, bg: 'bg-[#ffffff]', sidebar: 'bg-[#f4f4f5]', accent: 'bg-amber-600' },
+  { id: 'catppuccin', label: 'Catppuccin Mocha', icon: Moon, bg: 'bg-[#1e1e2e]', sidebar: 'bg-[#181825]', accent: 'bg-mauve-400 font-bold text-purple-400' },
+  { id: 'supabase', label: 'Supabase Emerald', icon: Moon, bg: 'bg-[#121212]', sidebar: 'bg-[#0c0c0c]', accent: 'bg-emerald-500' },
+  { id: 'amethyst', label: 'Amethyst Haze', icon: Moon, bg: 'bg-[#18122B]', sidebar: 'bg-[#110c20]', accent: 'bg-fuchsia-500' },
+  { id: 'cosmic', label: 'Cosmic Night', icon: Moon, bg: 'bg-[#0b132b]', sidebar: 'bg-[#070d20]', accent: 'bg-cyan-400' },
+  { id: 'tokyonight', label: 'Tokyo Night', icon: Moon, bg: 'bg-[#1a1b26]', sidebar: 'bg-[#16161e]', accent: 'bg-pink-500' },
+  { id: 'nordic', label: 'Nordic Frost', icon: Moon, bg: 'bg-[#1c2331]', sidebar: 'bg-[#161b26]', accent: 'bg-sky-400' },
+  { id: 'solarized', label: 'Solarized Amber', icon: Moon, bg: 'bg-[#073642]', sidebar: 'bg-[#002b36]', accent: 'bg-amber-400' },
+  { id: 'system', label: 'System Theme', icon: Monitor, bg: 'bg-zinc-900', sidebar: 'bg-zinc-800', accent: 'bg-amber-500' },
 ] as const
 
 export type ThemeId = (typeof themes)[number]['id']
