@@ -64,18 +64,18 @@ export function WelcomeScreen({
         <SidebarTrigger className="text-muted-foreground hover:text-foreground size-8" />
       </div>
 
-      <div className="relative z-10 mx-auto flex w-full max-w-3xl flex-col px-6 pt-[18vh]">
+      <div className="relative z-10 mx-auto flex w-full max-w-3xl flex-col px-4 sm:px-6 pt-[8vh] sm:pt-[18vh]">
         {/* Top: centered group (brand mark, headline, input) */}
         <div className="flex w-full flex-col items-center">
-          <div className="border-border/60 bg-card/40 mb-10 flex h-14 w-14 items-center justify-center rounded-xl border backdrop-blur">
+          <div className="border-border/60 bg-card/40 mb-6 sm:mb-10 flex h-12 w-12 sm:h-14 sm:w-14 items-center justify-center rounded-xl border backdrop-blur">
             <BrandMark />
           </div>
 
-          <h1 className="text-foreground text-2xl font-medium tracking-tight">
+          <h1 className="text-foreground text-center text-xl sm:text-2xl font-medium tracking-tight">
             BrightCode makes your work easier.
           </h1>
 
-          <div className="mt-8 w-full">
+          <div className="mt-6 sm:mt-8 w-full">
             {hasAnyModel ? (
               <ChatInput
                 modelGroups={modelGroups}
@@ -114,11 +114,7 @@ export function WelcomeScreen({
             </div>
           )}
 
-          {/* Project chip — only when a project is active. Mirrors the
-              MiniMax Code pattern: a small pill below the input shows
-              which project the new task will be filed under. The chevron
-              is decorative for Phase 1; project selection happens in
-              the sidebar. */}
+          {/* Project chip — only when a project is active. */}
           {hasAnyModel && activeProject && (
             <div className="mt-3 inline-flex items-center gap-1.5 rounded-md border border-border/40 bg-card/40 px-2.5 py-1 text-[12px] text-foreground/85">
               <Folder className="text-muted-foreground size-3.5" />
@@ -129,7 +125,7 @@ export function WelcomeScreen({
         </div>
 
         {/* Bottom: file type buttons (always available, no project required) */}
-        <div className="mt-10 flex w-full flex-col items-end gap-3">
+        <div className="mt-6 sm:mt-10 flex w-full flex-col items-center sm:items-end gap-3">
           <FileTypeButtons />
         </div>
       </div>

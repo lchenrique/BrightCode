@@ -167,12 +167,12 @@ export function ChatInput({
         className="placeholder:text-muted-foreground/70 text-foreground w-full resize-none border-0 bg-transparent text-[14px] leading-6 outline-none disabled:opacity-60"
       />
 
-      <div className="mt-2 flex items-center justify-between">
-        <div className="flex items-center gap-1">
+      <div className="mt-2 flex flex-wrap items-center justify-between gap-y-2 gap-x-1">
+        <div className="flex flex-wrap items-center gap-1">
           <Button
             variant="ghost"
             size="icon-sm"
-            className="text-muted-foreground hover:text-foreground"
+            className="text-muted-foreground hover:text-foreground shrink-0"
             aria-label="Attach"
             disabled={disabled}
           >
@@ -182,20 +182,20 @@ export function ChatInput({
           <button
             type="button"
             onClick={() => setAuthMode(authMode === 'full' ? 'read' : 'full')}
-            className="text-muted-foreground hover:text-foreground inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-[12px] font-medium transition-colors"
+            className="text-muted-foreground hover:text-foreground inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-md px-1.5 py-1 text-[12px] font-medium transition-colors"
           >
-            <RefreshCw className="size-3.5" />
-            <span>
-              {authMode === 'full' ? 'Full Authorization' : 'Read Only'}
+            <RefreshCw className="size-3.5 shrink-0" />
+            <span className="whitespace-nowrap">
+              {authMode === 'full' ? 'Full Auth' : 'Read Only'}
             </span>
-            <ChevronDown className="size-3.5 opacity-70" />
+            <ChevronDown className="size-3.5 shrink-0 opacity-70" />
           </button>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-1.5">
           <ThinkingSelector value={level} onChange={setThinkingLevel} />
 
-          <span className="bg-border/60 h-4 w-px" />
+          <span className="bg-border/60 h-4 w-px shrink-0" />
 
           <ModelSelector
             value={model}
@@ -210,7 +210,7 @@ export function ChatInput({
             onClick={submit}
             disabled={!value.trim() || !model || disabled}
             size="icon-sm"
-            className="bg-foreground text-background hover:bg-foreground/90 ml-1 size-7 rounded-md disabled:opacity-40"
+            className="bg-foreground text-background hover:bg-foreground/90 ml-0.5 size-7 shrink-0 rounded-md disabled:opacity-40"
             aria-label="Send"
           >
             <ArrowUp className="size-3.5" />
@@ -280,7 +280,7 @@ function ModelSelector({
         <button
           type="button"
           aria-label="Select model"
-          className="text-foreground/90 hover:text-foreground inline-flex max-w-[200px] items-center gap-1 rounded-md px-1.5 py-1 text-[12px] font-medium transition-colors"
+          className="text-foreground/90 hover:text-foreground inline-flex max-w-[100px] xs:max-w-[140px] sm:max-w-[200px] items-center gap-1 rounded-md px-1.5 py-1 text-[12px] font-medium transition-colors"
         >
           <span className="truncate">{currentLabel ?? emptyMessage}</span>
           <ChevronDown className="text-muted-foreground size-3.5 shrink-0" />
