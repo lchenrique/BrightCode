@@ -22,6 +22,7 @@ import {
   useAvailableModels,
   useAvailableModelsGrouped,
 } from '@/hooks/use-provider-registry'
+import { SidebarTrigger } from '@/components/ui/sidebar'
 import { Button } from '@/components/ui/button'
 import { useSettings } from '@/hooks/use-settings'
 import { useActiveProject } from '@/hooks/use-projects'
@@ -57,6 +58,11 @@ export function WelcomeScreen({
   return (
     <div className="relative flex h-full w-full flex-col overflow-hidden">
       <GridBackground />
+
+      {/* Top-left toggle button when sidebar is offcanvas / collapsed */}
+      <div className="absolute top-3 left-3 z-20">
+        <SidebarTrigger className="text-muted-foreground hover:text-foreground size-8" />
+      </div>
 
       <div className="relative z-10 mx-auto flex w-full max-w-3xl flex-col px-6 pt-[18vh]">
         {/* Top: centered group (brand mark, headline, input) */}

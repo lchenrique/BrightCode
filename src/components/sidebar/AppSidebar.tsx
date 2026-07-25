@@ -99,7 +99,7 @@ export function AppSidebar({
   const [addOpen, setAddOpen] = useState(false)
 
   return (
-    <Sidebar variant="inset" collapsible="icon" className="border-r-0">
+    <Sidebar variant="inset" collapsible="offcanvas" className="border-r-0">
       <SidebarHeader className="p-3">
         <div className="flex items-center">
           <SidebarTrigger className="text-muted-foreground hover:text-foreground size-8" />
