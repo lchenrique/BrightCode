@@ -83,6 +83,13 @@ interface ListDirsResult {
   parent: string | null
 }
 
+interface ProjectFileEntry {
+  name: string
+  path: string
+  isDir: boolean
+  size?: number
+}
+
 const projects = {
   list(): Promise<Project[]> {
     return ipcRenderer.invoke(IPC.PROJECTS_LIST)
@@ -213,6 +220,30 @@ const fs = {
     { ok: true; path: string } | { ok: false; error: string }
   > {
     return ipcRenderer.invoke(IPC.FS_CREATE_DIR, target)
+  },
+}
+
+const workspace = {
+  listTree(projectId: string): Promise<
+    { ok: true; entries: ProjectFileEntry[] } | { ok: false; error: string }
+  > {
+    return ipcRenderer.invoke(IPC.FS_PROJECT_TREE, projectId)
+  },
+  readFile(projectId: string, relativePath: string): Promise<
+    { ok: true; content: string; size: number } | { ok: false; error: string }
+  > {
+    return ipcRenderer.invoke(IPC.FS_PROJECT_READ, projectId, relativePath)
+  },
+  writeFile(projectId: string, relativePath: string, content: string): Promise<
+    { ok: true; bytes: number } | { ok: false; error: string }
+  > {
+    return ipcRenderer.invoke(IPC.FS_PROJECT_WRITE, projectId, relativePath, content)
+  },
+  openProject(
+    projectId: string,
+    target: 'vscode' | 'folder' | 'reveal',
+  ): Promise<{ ok: true } | { ok: false; error: string }> {
+    return ipcRenderer.invoke(IPC.FS_PROJECT_OPEN, projectId, target)
   },
 }
 
@@ -387,6 +418,31 @@ function startProviderStream(payload: StreamStartPayload): ProviderStreamHandle 
   }
 }
 
+// ── Skills ─────────────────────────────────────────────────────────────
+
+interface DiscoveredSkill {
+  id: string
+  name: string
+  description: string
+  source: 'codex' | 'agents' | 'gemini' | 'opencode' | 'project'
+  sourceLabel: string
+  folderPath: string
+  skillFilePath: string
+  author?: string
+  version?: string
+  tags?: string[]
+  content?: string
+}
+
+const skills = {
+  list(activeProjectPath?: string): Promise<DiscoveredSkill[]> {
+    return ipcRenderer.invoke(IPC.SKILLS_LIST, activeProjectPath)
+  },
+  read(filePath: string): Promise<string> {
+    return ipcRenderer.invoke(IPC.SKILLS_READ, filePath)
+  },
+}
+
 const electronAPI = {
   /** True when running inside the Electron wrapper. False in plain web dev. */
   isElectron: true,
@@ -402,7 +458,9 @@ const electronAPI = {
   tasks,
   oauth,
   fs,
+  workspace,
   tools,
+  skills,
   /** Forward a log message to the main process stdout. */
   log: rendererLog,
   /**
@@ -424,8 +482,10 @@ export type {
   Project,
   DirEntry,
   ListDirsResult,
+  ProjectFileEntry,
   ToolName,
   ToolArgs,
   ToolExecuteRequest,
   ToolResult,
+  DiscoveredSkill,
 }

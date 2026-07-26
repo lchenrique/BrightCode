@@ -77,10 +77,13 @@ export function MessageBubble({
   // text content + a subtle streaming dot.
   if (compact) {
     const hasContent = Boolean(message.content)
+    // AssistantTurn owns the working indicator before the first text token.
+    // Avoid rendering a second loader directly below the active turn.
+    if (!hasContent && message.streaming) return null
+
     return (
       <div className="text-foreground/90 ml-1.5 -mt-1 text-[14px] leading-relaxed">
         {hasContent && <MarkdownRenderer content={message.content} />}
-        {!hasContent && message.streaming && <span>…</span>}
         {message.streaming && hasContent && (
           <span className="bg-primary ml-1 inline-block h-1.5 w-1.5 translate-y-[-1px] animate-pulse rounded-full align-middle" />
         )}

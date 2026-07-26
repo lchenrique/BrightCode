@@ -610,3 +610,28 @@
     transform: translateY(0);
   }
 }
+
+/* Animate the existing Bot icon instead of adding a second mascot. */
+.assistant-working-bot {
+  color: var(--primary);
+  transform-origin: center;
+  animation: assistant-working-bot 1.35s ease-in-out infinite;
+}
+
+@keyframes assistant-working-bot {
+  0%,
+  100% {
+    opacity: 0.72;
+    transform: translateY(1px) rotate(-4deg) scale(0.96);
+  }
+  50% {
+    opacity: 1;
+    transform: translateY(-2px) rotate(4deg) scale(1.06);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .assistant-working-bot {
+    animation: none;
+  }
+}

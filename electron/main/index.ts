@@ -34,6 +34,7 @@ import { registerTasksIpc } from './tasks'
 import { registerOAuthIpc } from './oauth'
 import { registerFsIpc } from './fs-ops'
 import { registerToolsIpc } from './tools'
+import { registerSkillsIpc } from './skills'
 
 // electron-store is CJS in v8; this interop makes the default import work.
 const StoreCtor = (Store as unknown as { default?: typeof Store }).default ?? Store
@@ -235,6 +236,7 @@ registerTasksIpc()
 registerOAuthIpc()
 registerFsIpc()
 registerToolsIpc()
+registerSkillsIpc()
 
 // ── App lifecycle ──────────────────────────────────────────────────────
 

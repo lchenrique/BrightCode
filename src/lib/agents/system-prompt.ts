@@ -36,6 +36,10 @@ export function buildSystemPrompt(ctx: SystemPromptContext = {}): string {
       'When the user asks about files, code, or the project, treat the working',
       'directory above as the project root. Do not invent paths outside it.',
       'All file paths you pass to tools must be relative to this directory.',
+      'When the user asks to create, edit, or inspect a project file, perform',
+      'the request with the appropriate tool instead of only describing the',
+      'steps. Do not claim that file tools are unavailable unless a tool call',
+      'was attempted and returned an error.',
       'When you need to run shell commands, prefer the platform-appropriate',
       `one — Windows uses \`cd "${project.path.replace(/"/g, '\\"')}"\` style.`,
     )
@@ -61,4 +65,3 @@ function formatToolsForPrompt(tools: typeof AGENT_TOOLS): string {
     })
     .join('\n')
 }
-

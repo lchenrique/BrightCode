@@ -40,6 +40,7 @@ import { useActiveProject } from '@/hooks/use-projects'
 import { buildSystemPrompt } from '@/lib/agents/system-prompt'
 import { AGENT_TOOLS } from '@/lib/agents/tools'
 import type { Project } from '@/lib/projects/store'
+import { notifyProjectFilesChanged } from '@/lib/projects/file-events'
 
 const MAX_TURNS = 8
 
@@ -226,7 +227,12 @@ export function ChatSurface({
             }
             return m
           case 'tool_use_delta': {
-            const tc = buffers.toolCalls.find((x) => x.id === chunk.id)
+            let tc = buffers.toolCalls.find((x) => x.id === chunk.id)
+            if (!tc && chunk.name) {
+              tc = { id: chunk.id, name: chunk.name, input: {} }
+              buffers.toolCalls.push(tc)
+              onToolCall?.(tc)
+            }
             const prevArgs = buffers.toolInputs.get(chunk.id) ?? ''
             const next = typeof chunk.input === 'string' ? chunk.input : prevArgs
             buffers.toolInputs.set(chunk.id, next)
@@ -364,6 +370,20 @@ export function ChatSurface({
           const summary = ok ? summarizeToolResult(tc.name, result) : (error ?? 'error')
 
           onToolResult?.({ id: tc.id, name: tc.name }, { ok, result, error })
+          if (
+            ok &&
+            project &&
+            (tc.name === 'write_file' || tc.name === 'edit_file')
+          ) {
+            const changedPath =
+              tc.input &&
+              typeof tc.input === 'object' &&
+              'path' in tc.input &&
+              typeof tc.input.path === 'string'
+                ? tc.input.path
+                : undefined
+            notifyProjectFilesChanged(project.id, changedPath)
+          }
 
           setMessages((prev) => [
             ...prev,

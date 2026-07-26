@@ -124,7 +124,7 @@ export function AssistantTurn({
 
   // The "Thought N time(s)" badge — we count it as 1 per turn that
   // has any tool calls. Empty + still streaming also counts as 1.
-  const thoughtCount = items.length > 0 || streaming ? 1 : 0
+  const thoughtCount = assistant.thinking || items.length > 0 || streaming ? 1 : 0
 
   return (
     <div className="flex flex-col gap-1.5">
@@ -184,16 +184,17 @@ export function AssistantTurn({
               + tool execution, not the final text. */}
 
           {streaming && (
-            <div className="text-muted-foreground/90 mt-1 flex items-center gap-2 text-[12.5px]">
-              <Bot className="size-3.5 shrink-0" />
-              <span
-                key={phraseIndex}
-                className="inline-block animate-[fadeInUp_0.35s_ease-out]"
-              >
-                {FILLING_PHRASES[phraseIndex]}
-              </span>
-            </div>
+            <WorkingStatus phrase={FILLING_PHRASES[phraseIndex]} />
           )}
+        </div>
+      )}
+
+      {/* When collapsed, keep the same animated bot visible below the
+          summary. This replaces the old detached "..." loader and avoids
+          introducing a second mascot outside the active turn. */}
+      {!open && streaming && (
+        <div className="ml-5">
+          <WorkingStatus phrase={FILLING_PHRASES[phraseIndex]} />
         </div>
       )}
 
@@ -212,6 +213,25 @@ export function AssistantTurn({
           />
         </div>
       )}
+    </div>
+  )
+}
+
+function WorkingStatus({ phrase }: { phrase: string }) {
+  return (
+    <div
+      className="text-muted-foreground/90 mt-1 flex items-center gap-2 text-[12.5px]"
+      role="status"
+      aria-live="polite"
+      aria-label={`Agent is working: ${phrase}`}
+    >
+      <Bot className="assistant-working-bot size-3.5 shrink-0" aria-hidden="true" />
+      <span
+        key={phrase}
+        className="inline-block animate-[fadeInUp_0.35s_ease-out]"
+      >
+        {phrase}
+      </span>
     </div>
   )
 }

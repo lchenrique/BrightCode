@@ -11,6 +11,8 @@ import { useSettingsListener } from '@/hooks/use-settings'
 import { useActiveProject, useProjectsActions } from '@/hooks/use-projects'
 import { tasksStore, deriveTaskTitle } from '@/lib/tasks/store'
 
+import { SkillsView } from '@/components/skills/SkillsView'
+
 /**
  * Interface-only view switching — plain React state, no router.
  *
@@ -20,11 +22,13 @@ import { tasksStore, deriveTaskTitle } from '@/lib/tasks/store'
  * `task`         → a specific conversation thread, by id. Created when
  *                  the user submits the first message in `welcome`.
  * `agent`        → the agent configuration view.
+ * `skills`       → skills manager and library view.
  */
 type View =
   | { kind: 'welcome' }
   | { kind: 'task'; id: string }
   | { kind: 'agent'; name: string; emoji: string }
+  | { kind: 'skills' }
 
 /** Resizable sidebar width (rem), persisted across sessions. */
 const SIDEBAR_WIDTH_STORAGE_KEY = 'brightcode:sidebar-width'
@@ -100,6 +104,7 @@ export function AppShell() {
         <AppSidebar
           activeTaskId={view.kind === 'task' ? view.id : undefined}
           onNewTask={() => setView({ kind: 'welcome' })}
+          onSelectSkills={() => setView({ kind: 'skills' })}
           onSelectProject={(projectId) => {
             void setActiveProject(projectId)
             setView({ kind: 'welcome' })
@@ -130,6 +135,7 @@ export function AppShell() {
           {view.kind === 'agent' && (
             <AgentView key={view.name} agentName={view.name} emoji={view.emoji} />
           )}
+          {view.kind === 'skills' && <SkillsView />}
         </main>
       </div>
 

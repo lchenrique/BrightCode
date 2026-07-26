@@ -74,6 +74,7 @@ type Agent = (typeof agentTeam)[number]
 export function AppSidebar({
   activeTaskId,
   onNewTask,
+  onSelectSkills,
   onSelectProject,
   onSelectTask,
   onSelectAgent,
@@ -84,6 +85,7 @@ export function AppSidebar({
 }: {
   activeTaskId?: string
   onNewTask: () => void
+  onSelectSkills?: () => void
   onSelectProject: (projectId: string) => void
   /** Switch to a specific task by id. */
   onSelectTask: (id: string) => void
@@ -108,6 +110,7 @@ export function AppSidebar({
           items={topNav}
           onItemClick={(title) => {
             if (title === 'New task') onNewTask()
+            else if (title === 'Skills') onSelectSkills?.()
             else console.log('[nav]', title)
           }}
         />

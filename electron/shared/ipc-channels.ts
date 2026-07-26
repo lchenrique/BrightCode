@@ -71,6 +71,10 @@ export const IPC = {
   FS_VALIDATE: 'fs:validate',
   FS_CLONE: 'fs:clone',
   FS_CREATE_DIR: 'fs:create-dir',
+  FS_PROJECT_TREE: 'fs:project-tree',
+  FS_PROJECT_READ: 'fs:project-read',
+  FS_PROJECT_WRITE: 'fs:project-write',
+  FS_PROJECT_OPEN: 'fs:project-open',
 
   /**
    * Task / Conversation persistence via electron-store.
@@ -89,6 +93,12 @@ export const IPC = {
    * project. The main process enforces the sandbox.
    */
   TOOL_EXECUTE: 'tool:execute',
+
+  /**
+   * Skills discovery + reading from Codex, Agents, Gemini, OpenCode and project folders.
+   */
+  SKILLS_LIST: 'skills:list',
+  SKILLS_READ: 'skills:read',
 } as const
 
 export type IpcChannel = (typeof IPC)[keyof typeof IPC]

@@ -80,7 +80,7 @@ export type StreamChunk =
   | { type: 'text_delta'; text: string }
   | { type: 'thinking_delta'; text: string }
   | { type: 'tool_use_start'; id: string; name: string }
-  | { type: 'tool_use_delta'; id: string; input: unknown }
+  | { type: 'tool_use_delta'; id: string; input: unknown; name?: string }
   | { type: 'tool_use_end'; id: string }
   | {
       type: 'message_end'

@@ -12,10 +12,180 @@ import { promises as fsp, realpathSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { spawn } from 'node:child_process'
-import { BrowserWindow, dialog, ipcMain } from 'electron'
+import { BrowserWindow, dialog, ipcMain, shell } from 'electron'
 import { IPC } from '../shared/ipc-channels'
+import { listProjects } from './projects'
 
 export type DirEntry = { name: string; path: string }
+export type ProjectFileEntry = {
+  name: string
+  path: string
+  isDir: boolean
+  size?: number
+}
+
+const MAX_PROJECT_TREE_ENTRIES = 5000
+const MAX_EDITOR_FILE_BYTES = 2 * 1024 * 1024
+
+function getRegisteredProject(projectId: string) {
+  return listProjects().find((project) => project.id === projectId) ?? null
+}
+
+async function resolveExistingProjectPath(
+  projectId: string,
+  relativePath: string,
+): Promise<{ root: string; absolutePath: string }> {
+  const project = getRegisteredProject(projectId)
+  if (!project) throw new Error('Project not found')
+  if (!relativePath || path.isAbsolute(relativePath)) {
+    throw new Error('A relative project path is required')
+  }
+
+  const normalized = path.posix.normalize(relativePath.replace(/\\/g, '/'))
+  if (normalized === '..' || normalized.startsWith('../') || normalized.startsWith('/')) {
+    throw new Error('Path escapes the project root')
+  }
+
+  const root = await fsp.realpath(project.path)
+  const candidate = path.resolve(root, normalized)
+  const absolutePath = await fsp.realpath(candidate)
+  const relation = path.relative(root, absolutePath)
+  if (relation === '..' || relation.startsWith(`..${path.sep}`) || path.isAbsolute(relation)) {
+    throw new Error('Path escapes the project root')
+  }
+  return { root, absolutePath }
+}
+
+export async function listProjectTree(
+  projectId: string,
+): Promise<
+  | { ok: true; entries: ProjectFileEntry[] }
+  | { ok: false; error: string }
+> {
+  const project = getRegisteredProject(projectId)
+  if (!project) return { ok: false, error: 'Project not found' }
+
+  try {
+    const root = await fsp.realpath(project.path)
+    const entries: ProjectFileEntry[] = []
+
+    async function walk(directory: string, base: string): Promise<void> {
+      if (entries.length >= MAX_PROJECT_TREE_ENTRIES) return
+      const children = await fsp.readdir(directory, { withFileTypes: true })
+      children.sort((a, b) => {
+        if (a.isDirectory() !== b.isDirectory()) return a.isDirectory() ? -1 : 1
+        return a.name.localeCompare(b.name, undefined, { sensitivity: 'base' })
+      })
+
+      for (const child of children) {
+        if (entries.length >= MAX_PROJECT_TREE_ENTRIES) break
+        if (child.name === 'node_modules' || child.name === '.git') continue
+        const relative = base ? `${base}/${child.name}` : child.name
+        const absolute = path.join(directory, child.name)
+
+        if (child.isDirectory()) {
+          entries.push({ name: child.name, path: relative, isDir: true })
+          await walk(absolute, relative)
+        } else if (child.isFile()) {
+          const stat = await fsp.stat(absolute).catch(() => null)
+          entries.push({
+            name: child.name,
+            path: relative,
+            isDir: false,
+            size: stat?.size,
+          })
+        }
+      }
+    }
+
+    await walk(root, '')
+    return { ok: true, entries }
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : String(err) }
+  }
+}
+
+export async function readProjectFile(
+  projectId: string,
+  relativePath: string,
+): Promise<
+  | { ok: true; content: string; size: number }
+  | { ok: false; error: string }
+> {
+  try {
+    const { absolutePath } = await resolveExistingProjectPath(projectId, relativePath)
+    const stat = await fsp.stat(absolutePath)
+    if (!stat.isFile()) return { ok: false, error: 'Path is not a file' }
+    if (stat.size > MAX_EDITOR_FILE_BYTES) {
+      return { ok: false, error: 'File is larger than 2 MB' }
+    }
+    const buffer = await fsp.readFile(absolutePath)
+    if (buffer.includes(0)) return { ok: false, error: 'Binary files cannot be opened in the editor' }
+    return { ok: true, content: buffer.toString('utf-8'), size: stat.size }
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : String(err) }
+  }
+}
+
+export async function writeProjectFile(
+  projectId: string,
+  relativePath: string,
+  content: string,
+): Promise<
+  | { ok: true; bytes: number }
+  | { ok: false; error: string }
+> {
+  try {
+    const { absolutePath } = await resolveExistingProjectPath(projectId, relativePath)
+    const stat = await fsp.stat(absolutePath)
+    if (!stat.isFile()) return { ok: false, error: 'Path is not a file' }
+    const bytes = Buffer.byteLength(content, 'utf-8')
+    if (bytes > MAX_EDITOR_FILE_BYTES) {
+      return { ok: false, error: 'File is larger than 2 MB' }
+    }
+    await fsp.writeFile(absolutePath, content, 'utf-8')
+    return { ok: true, bytes }
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : String(err) }
+  }
+}
+
+export type ProjectOpenTarget = 'vscode' | 'folder' | 'reveal'
+
+export async function openProjectTarget(
+  projectId: string,
+  target: ProjectOpenTarget,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const project = getRegisteredProject(projectId)
+  if (!project) return { ok: false, error: 'Project not found' }
+  if (!['vscode', 'folder', 'reveal'].includes(target)) {
+    return { ok: false, error: 'Unsupported project action' }
+  }
+
+  try {
+    if (target === 'vscode') {
+      const normalized = project.path.replace(/\\/g, '/')
+      const url = `vscode://file/${encodeURI(normalized)
+        .replace(/#/g, '%23')
+        .replace(/\?/g, '%3F')}`
+      await shell.openExternal(url)
+      return { ok: true }
+    }
+
+    if (target === 'reveal') {
+      shell.showItemInFolder(project.path)
+      return { ok: true }
+    }
+
+    const error = await shell.openPath(project.path)
+    return error ? { ok: false, error } : { ok: true }
+  } catch (error) {
+    return {
+      ok: false,
+      error: error instanceof Error ? error.message : String(error),
+    }
+  }
+}
 
 // ── Home + default folder ──────────────────────────────────────────────
 
@@ -217,4 +387,20 @@ export function registerFsIpc(): void {
   ipcMain.handle(IPC.FS_VALIDATE, (_e, path: string) => validatePath(path))
   ipcMain.handle(IPC.FS_CLONE, (_e, url: string, dest: string) => cloneRepo(url, dest))
   ipcMain.handle(IPC.FS_CREATE_DIR, (_e, target: string) => createProjectDir(target))
+  ipcMain.handle(IPC.FS_PROJECT_TREE, (_e, projectId: string) =>
+    listProjectTree(projectId),
+  )
+  ipcMain.handle(IPC.FS_PROJECT_READ, (_e, projectId: string, relativePath: string) =>
+    readProjectFile(projectId, relativePath),
+  )
+  ipcMain.handle(
+    IPC.FS_PROJECT_WRITE,
+    (_e, projectId: string, relativePath: string, content: string) =>
+      writeProjectFile(projectId, relativePath, content),
+  )
+  ipcMain.handle(
+    IPC.FS_PROJECT_OPEN,
+    (_e, projectId: string, target: ProjectOpenTarget) =>
+      openProjectTarget(projectId, target),
+  )
 }
