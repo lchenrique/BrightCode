@@ -441,6 +441,9 @@ const skills = {
   read(filePath: string): Promise<string> {
     return ipcRenderer.invoke(IPC.SKILLS_READ, filePath)
   },
+  write(filePath: string, content: string): Promise<boolean> {
+    return ipcRenderer.invoke(IPC.SKILLS_WRITE, filePath, content)
+  },
 }
 
 const electronAPI = {

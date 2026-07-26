@@ -32,11 +32,13 @@ export interface EditorFile {
 export function CodeEditor({
   file,
   visible = true,
+  readOnly = false,
   onChange,
   onSave,
 }: {
   file: EditorFile
   visible?: boolean
+  readOnly?: boolean
   onChange: (content: string) => void
   onSave: () => void
 }) {
@@ -45,11 +47,13 @@ export function CodeEditor({
   const fileRef = useRef(file)
   const onChangeRef = useRef(onChange)
   const onSaveRef = useRef(onSave)
+  const readOnlyRef = useRef(readOnly)
   const ownedModelsRef = useRef(new Set<monaco.editor.ITextModel>())
 
   fileRef.current = file
   onChangeRef.current = onChange
   onSaveRef.current = onSave
+  readOnlyRef.current = readOnly
 
   useEffect(() => {
     if (!containerRef.current) return
@@ -66,6 +70,7 @@ export function CodeEditor({
       scrollBeyondLastLine: false,
       smoothScrolling: true,
       tabSize: 2,
+      readOnly: readOnlyRef.current,
       theme: document.documentElement.classList.contains('dark') ? 'vs-dark' : 'vs',
     })
     editorRef.current = editor
@@ -96,6 +101,10 @@ export function CodeEditor({
       editorRef.current = null
     }
   }, [])
+
+  useEffect(() => {
+    editorRef.current?.updateOptions({ readOnly })
+  }, [readOnly])
 
   useEffect(() => {
     const editor = editorRef.current

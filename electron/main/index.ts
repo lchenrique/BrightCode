@@ -13,7 +13,7 @@
  * automatically by `vite-plugin-electron`.
  */
 
-import { app, BrowserWindow, ipcMain, shell } from 'electron'
+import { app, BrowserWindow, ipcMain, protocol, shell } from 'electron'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
 import Store from 'electron-store'
@@ -32,7 +32,11 @@ import { registerProviderProxy } from './provider-proxy'
 import { registerProjectsIpc } from './projects'
 import { registerTasksIpc } from './tasks'
 import { registerOAuthIpc } from './oauth'
-import { registerFsIpc } from './fs-ops'
+import {
+  PROJECT_PREVIEW_SCHEME,
+  registerFsIpc,
+  registerProjectPreviewProtocol,
+} from './fs-ops'
 import { registerToolsIpc } from './tools'
 import { registerSkillsIpc } from './skills'
 
@@ -41,6 +45,18 @@ const StoreCtor = (Store as unknown as { default?: typeof Store }).default ?? St
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = dirname(__filename)
+
+protocol.registerSchemesAsPrivileged([
+  {
+    scheme: PROJECT_PREVIEW_SCHEME,
+    privileges: {
+      standard: true,
+      secure: true,
+      supportFetchAPI: true,
+      corsEnabled: true,
+    },
+  },
+])
 
 // ── Persistent credential store ────────────────────────────────────────
 //
@@ -241,6 +257,7 @@ registerSkillsIpc()
 // ── App lifecycle ──────────────────────────────────────────────────────
 
 app.whenReady().then(() => {
+  registerProjectPreviewProtocol()
   createWindow()
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()

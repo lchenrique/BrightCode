@@ -95,10 +95,11 @@ export const IPC = {
   TOOL_EXECUTE: 'tool:execute',
 
   /**
-   * Skills discovery + reading from Codex, Agents, Gemini, OpenCode and project folders.
+   * Skills discovery + reading/writing from Codex, Agents, Gemini, OpenCode and project folders.
    */
   SKILLS_LIST: 'skills:list',
   SKILLS_READ: 'skills:read',
+  SKILLS_WRITE: 'skills:write',
 } as const
 
 export type IpcChannel = (typeof IPC)[keyof typeof IPC]

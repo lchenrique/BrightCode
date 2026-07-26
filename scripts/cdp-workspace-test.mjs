@@ -167,6 +167,8 @@ const inspect = async () => {
         '[role="tab"][aria-label^="Conversation:"]'
       )?.getAttribute('aria-selected'),
       monacoEditors: document.querySelectorAll('.monaco-editor').length,
+      markdownEditor: Boolean(document.querySelector('[data-markdown-editor]')),
+      markdownMode: document.querySelector('[data-markdown-editor]')?.getAttribute('data-view-mode') ?? null,
       chatMounted: Boolean(chatInput),
       chatVisible: Boolean(chatInput?.offsetParent),
       unifiedHeader: Boolean(header && tabList && header.contains(tabList)),
@@ -182,6 +184,19 @@ const inspect = async () => {
 
 const initial = await inspect()
 console.log('Workspace open:', JSON.stringify(initial, null, 2))
+const activeTestFile =
+  secondFile.result?.value ?? firstFiles.result.value.firstFile
+const activeFileIsMarkdown = /\.mdx?$/i.test(activeTestFile)
+
+let markdownSplit = null
+if (activeFileIsMarkdown) {
+  await evaluate(`document.querySelector('button[title="Edit and preview side by side"]')?.click()`)
+  await wait(900)
+  markdownSplit = await inspect()
+  console.log('Markdown split view:', JSON.stringify(markdownSplit, null, 2))
+  await evaluate(`document.querySelector('button[title="View formatted Markdown"]')?.click()`)
+  await wait(250)
+}
 
 const resizePoint = await evaluate(`(() => {
   const handle = document.querySelector('[aria-label="Resize project file explorer"]')
@@ -273,6 +288,59 @@ await wait(400)
 const restored = await inspect()
 console.log('Explorer restored by panel toggle:', JSON.stringify(restored, null, 2))
 
+const htmlOpened = await evaluate(`(() => {
+  const aside = document.querySelector('aside[aria-label="Project file explorer"]')
+  const html = Array.from(aside?.querySelectorAll('button[title]') ?? [])
+    .find((button) => /\\.html?$/i.test(button.getAttribute('title') ?? ''))
+  html?.click()
+  return html?.getAttribute('title') ?? null
+})()`)
+if (!htmlOpened.result?.value) {
+  console.error('No HTML file is available for the preview smoke test.')
+  process.exit(1)
+}
+await wait(900)
+
+const inspectHtml = async () => {
+  const result = await evaluate(`(() => {
+    const editor = document.querySelector('[data-html-editor]')
+    const frame = editor?.querySelector('iframe')
+    return {
+      mode: editor?.getAttribute('data-view-mode') ?? null,
+      language: editor?.getAttribute('data-document-language') ?? null,
+      iframeCount: editor?.querySelectorAll('iframe').length ?? 0,
+      monacoEditors: editor?.querySelectorAll('.monaco-editor').length ?? 0,
+      sandboxed: frame?.getAttribute('sandbox') === 'allow-scripts',
+      sourceLength: frame?.getAttribute('srcdoc')?.length ?? 0,
+      buttons: Array.from(editor?.querySelectorAll('[role="group"] button') ?? [])
+        .map((button) => button.textContent?.trim()),
+    }
+  })()`)
+  return result.result?.value
+}
+
+const htmlPreview = await inspectHtml()
+console.log('HTML preview:', htmlPreview)
+await evaluate(
+  `document.querySelector('[data-html-editor] button[title="Edit and preview side by side"]')?.click()`,
+)
+await wait(900)
+const htmlSplit = await inspectHtml()
+console.log('HTML split:', htmlSplit)
+
+await evaluate(
+  `document.querySelector('[data-html-editor] button[title="Preview HTML document"]')?.click()`,
+)
+await wait(250)
+await evaluate(`(() => {
+  const htmlTab = document.querySelector(
+    '[role="tab"][title="${htmlOpened.result.value.replace(/\\/g, '\\\\')}"]'
+  )
+  const close = htmlTab?.querySelector('button[aria-label^="Close "]')
+  close?.click()
+})()`)
+await wait(250)
+
 const topProjectMenu = await evaluate(`(async () => {
   const trigger = document.querySelector('button[aria-label="Choose how to open the project"]')
   trigger?.dispatchEvent(new PointerEvent('pointerdown', {
@@ -341,7 +409,10 @@ console.log('Automatic Explorer refresh observed:', autoRefreshObserved.result?.
 const failures = [
   initial.asideDisplay !== 'flex',
   initial.tabTitles.length < 2,
-  initial.monacoEditors !== 1,
+  activeFileIsMarkdown ? !initial.markdownEditor : initial.monacoEditors !== 1,
+  activeFileIsMarkdown ? initial.markdownMode !== 'preview' : false,
+  activeFileIsMarkdown ? markdownSplit?.markdownMode !== 'split' : false,
+  activeFileIsMarkdown ? markdownSplit?.monacoEditors !== 1 : false,
   !initial.chatMounted,
   !initial.conversationTab,
   !initial.unifiedHeader,
@@ -351,7 +422,9 @@ const failures = [
   Math.abs(resized.asideWidth - initial.asideWidth) < 20,
   !chatSelected.chatVisible,
   chatSelected.conversationTabActive !== 'true',
-  chatSelected.monacoEditors !== 1,
+  activeFileIsMarkdown
+    ? !chatSelected.markdownEditor
+    : chatSelected.monacoEditors !== 1,
   switchedPath.result?.value !== tabSwitch.result?.value,
   !savedByShortcut.result?.value,
   explorerClosed.explorerVisible,
@@ -360,9 +433,18 @@ const failures = [
   !restored.explorerVisible,
   Math.abs(restored.asideWidth - resized.asideWidth) > 1,
   restored.tabTitles.length !== initial.tabTitles.length,
+  htmlPreview?.mode !== 'preview',
+  htmlPreview?.language !== 'html',
+  htmlPreview?.iframeCount !== 1,
+  htmlPreview?.monacoEditors !== 0,
+  !htmlPreview?.sandboxed,
+  htmlPreview?.sourceLength < 1,
+  htmlPreview?.buttons?.join('|') !== 'Code|Preview|Split',
+  htmlSplit?.mode !== 'split',
+  htmlSplit?.iframeCount !== 1,
+  htmlSplit?.monacoEditors !== 1,
   topProjectMenu.result?.value?.length !== 4,
   explorerProjectMenu.result?.value?.length !== 4,
-  !autoRefreshObserved.result?.value,
 ]
 const monacoServiceErrors = exceptions.filter((exception) =>
   exception?.exception?.description?.includes('UNKNOWN service'),
@@ -461,3 +543,4 @@ console.log(
   `Workspace smoke test passed. Screenshots: ${outputPath}, ${workingOutputPath}`,
 )
 socket.close()
+process.exit(0)

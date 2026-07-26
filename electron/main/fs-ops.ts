@@ -11,8 +11,9 @@
 import { promises as fsp, realpathSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
+import { pathToFileURL } from 'node:url'
 import { spawn } from 'node:child_process'
-import { BrowserWindow, dialog, ipcMain, shell } from 'electron'
+import { BrowserWindow, dialog, ipcMain, net, protocol, shell } from 'electron'
 import { IPC } from '../shared/ipc-channels'
 import { listProjects } from './projects'
 
@@ -26,6 +27,7 @@ export type ProjectFileEntry = {
 
 const MAX_PROJECT_TREE_ENTRIES = 5000
 const MAX_EDITOR_FILE_BYTES = 2 * 1024 * 1024
+export const PROJECT_PREVIEW_SCHEME = 'brightcode-project'
 
 function getRegisteredProject(projectId: string) {
   return listProjects().find((project) => project.id === projectId) ?? null
@@ -54,6 +56,34 @@ async function resolveExistingProjectPath(
     throw new Error('Path escapes the project root')
   }
   return { root, absolutePath }
+}
+
+/**
+ * Serves project assets to the sandboxed HTML preview. Using a dedicated
+ * protocol gives srcDoc documents a real base URL without exposing arbitrary
+ * file:// paths outside the registered project.
+ */
+export function registerProjectPreviewProtocol(): void {
+  protocol.handle(PROJECT_PREVIEW_SCHEME, async (request) => {
+    try {
+      const url = new URL(request.url)
+      const projectId = decodeURIComponent(url.hostname)
+      const relativePath = decodeURIComponent(url.pathname.slice(1))
+      const { absolutePath } = await resolveExistingProjectPath(
+        projectId,
+        relativePath,
+      )
+      const stat = await fsp.stat(absolutePath)
+      if (!stat.isFile()) {
+        return new Response('Project preview asset is not a file', {
+          status: 404,
+        })
+      }
+      return net.fetch(pathToFileURL(absolutePath).toString())
+    } catch {
+      return new Response('Project preview asset not found', { status: 404 })
+    }
+  })
 }
 
 export async function listProjectTree(

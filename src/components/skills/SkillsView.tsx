@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   Sparkles,
   Search,
@@ -11,11 +11,18 @@ import {
   Terminal,
   Cpu,
   Boxes,
+  Check,
+  LoaderCircle,
+  Save,
 } from 'lucide-react'
 import { SidebarTrigger } from '@/components/ui/sidebar'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
-import { MarkdownRenderer } from '@/components/chat/MarkdownRenderer'
+import {
+  DocumentDualEditor,
+  DocumentModeSwitcher,
+  type DocumentViewMode,
+} from '@/components/files/DocumentDualEditor'
 import { useActiveProject } from '@/hooks/use-projects'
 import { cn } from '@/lib/utils'
 
@@ -33,6 +40,11 @@ export interface DiscoveredSkill {
 }
 
 type SourceFilter = 'all' | 'codex' | 'agents' | 'gemini' | 'opencode' | 'project'
+
+const SKILLS_DRAWER_WIDTH_KEY = 'brightcode:skills-drawer-width'
+const SKILLS_DRAWER_DEFAULT_WIDTH = 560
+const SKILLS_DRAWER_MIN_WIDTH = 420
+const SKILLS_DRAWER_MAX_WIDTH = 960
 
 const SOURCE_COLORS: Record<
   DiscoveredSkill['source'],
@@ -73,7 +85,20 @@ export function SkillsView() {
   const [sourceFilter, setSourceFilter] = useState<SourceFilter>('all')
   const [selectedSkill, setSelectedSkill] = useState<DiscoveredSkill | null>(null)
   const [skillContent, setSkillContent] = useState<string | null>(null)
+  const [savedSkillContent, setSavedSkillContent] = useState<string | null>(null)
   const [loadingContent, setLoadingContent] = useState(false)
+  const [savingSkill, setSavingSkill] = useState(false)
+  const [skillSaveNotice, setSkillSaveNotice] = useState<string | null>(null)
+  const [skillError, setSkillError] = useState<string | null>(null)
+  const [skillMode, setSkillMode] = useState<DocumentViewMode>('preview')
+  const [drawerWidth, setDrawerWidth] = useState(() => {
+    const stored = Number.parseFloat(
+      localStorage.getItem(SKILLS_DRAWER_WIDTH_KEY) ?? '',
+    )
+    return clampSkillsDrawerWidth(
+      Number.isFinite(stored) ? stored : SKILLS_DRAWER_DEFAULT_WIDTH,
+    )
+  })
 
   const loadSkills = async () => {
     setLoading(true)
@@ -118,22 +143,93 @@ export function SkillsView() {
   }, [activeProject?.path])
 
   const handleSelectSkill = async (skill: DiscoveredSkill) => {
+    if (
+      selectedSkill?.id !== skill.id &&
+      skillContent !== null &&
+      savedSkillContent !== null &&
+      skillContent !== savedSkillContent &&
+      !window.confirm('Discard the unsaved changes to this skill?')
+    ) {
+      return
+    }
     setSelectedSkill(skill)
     setLoadingContent(true)
     setSkillContent(null)
+    setSavedSkillContent(null)
+    setSkillSaveNotice(null)
+    setSkillError(null)
+    setSkillMode('preview')
     try {
       if (window.electronAPI?.skills) {
         const raw = await window.electronAPI.skills.read(skill.skillFilePath)
         setSkillContent(raw)
+        setSavedSkillContent(raw)
       } else {
-        setSkillContent(`# ${skill.name}\n\n${skill.description}\n\n*Path:* \`${skill.skillFilePath}\``)
+        const fallback = `# ${skill.name}\n\n${skill.description}\n\n*Path:* \`${skill.skillFilePath}\``
+        setSkillContent(fallback)
+        setSavedSkillContent(fallback)
       }
     } catch (err) {
-      setSkillContent(`*Error loading skill content:* ${String(err)}`)
+      setSkillError(`Error loading skill content: ${String(err)}`)
     } finally {
       setLoadingContent(false)
     }
   }
+
+  const closeSelectedSkill = () => {
+    if (
+      skillContent !== null &&
+      savedSkillContent !== null &&
+      skillContent !== savedSkillContent &&
+      !window.confirm('Close this skill without saving your changes?')
+    ) {
+      return
+    }
+    setSelectedSkill(null)
+    setSkillContent(null)
+    setSavedSkillContent(null)
+    setSkillError(null)
+  }
+
+  const saveSelectedSkill = async () => {
+    if (
+      !selectedSkill ||
+      skillContent === null ||
+      savedSkillContent === null ||
+      skillContent === savedSkillContent ||
+      savingSkill
+    ) {
+      return
+    }
+
+    setSavingSkill(true)
+    setSkillError(null)
+    try {
+      if (window.electronAPI?.skills) {
+        const saved = await window.electronAPI.skills.write(
+          selectedSkill.skillFilePath,
+          skillContent,
+        )
+        if (!saved) throw new Error('The skill could not be saved.')
+      }
+      setSavedSkillContent(skillContent)
+      setSkillSaveNotice('SKILL.md saved')
+    } catch (err) {
+      setSkillError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setSavingSkill(false)
+    }
+  }
+
+  useEffect(() => {
+    if (!skillSaveNotice) return
+    const timer = window.setTimeout(() => setSkillSaveNotice(null), 2200)
+    return () => window.clearTimeout(timer)
+  }, [skillSaveNotice])
+
+  useEffect(() => {
+    localStorage.setItem(SKILLS_DRAWER_WIDTH_KEY, String(drawerWidth))
+  }, [drawerWidth])
 
   const filteredSkills = useMemo(() => {
     return skills.filter((s) => {
@@ -339,61 +435,222 @@ export function SkillsView() {
 
         {/* Right: Skill Detail Drawer / Viewer */}
         {selectedSkill && (
-          <aside className="border-border/60 bg-card/60 flex w-96 shrink-0 flex-col border-l backdrop-blur">
-            <div className="border-border/60 flex items-center justify-between border-b p-3.5">
-              <div className="flex min-w-0 items-center gap-2">
+          <aside
+            className="border-border/60 bg-card/60 relative flex max-w-full shrink-0 flex-col border-l backdrop-blur"
+            style={{ width: `${drawerWidth}px` }}
+            aria-label="Skill editor"
+          >
+            <SkillsDrawerResizeHandle
+              width={drawerWidth}
+              onResize={setDrawerWidth}
+            />
+
+            <div className="border-border/60 flex h-12 shrink-0 items-center gap-2 border-b px-2.5">
+              <div className="flex min-w-0 flex-1 items-center gap-2">
                 <FileText className="text-primary size-4 shrink-0" />
-                <span className="truncate text-[13px] font-semibold text-foreground">
-                  {selectedSkill.name}
-                </span>
+                <div className="min-w-0">
+                  <div className="flex min-w-0 items-center gap-1.5">
+                    <span className="text-foreground truncate text-[12.5px] font-semibold">
+                      {selectedSkill.name}
+                    </span>
+                    <span
+                      className={cn(
+                        'hidden shrink-0 rounded-full border px-1.5 py-px text-[9px] font-medium xl:inline-flex',
+                        SOURCE_COLORS[selectedSkill.source].badge,
+                      )}
+                    >
+                      {selectedSkill.sourceLabel}
+                    </span>
+                  </div>
+                  <p
+                    className="text-muted-foreground truncate font-mono text-[9.5px]"
+                    title={selectedSkill.skillFilePath}
+                  >
+                    {selectedSkill.skillFilePath}
+                  </p>
+                </div>
               </div>
+
+              <DocumentModeSwitcher
+                mode={skillMode}
+                onModeChange={setSkillMode}
+                compact
+              />
+
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => void saveSelectedSkill()}
+                disabled={
+                  savingSkill ||
+                  skillContent === null ||
+                  savedSkillContent === null ||
+                  skillContent === savedSkillContent
+                }
+                className="h-7 shrink-0 gap-1 px-2 text-[10.5px]"
+                title="Save SKILL.md (Ctrl+S)"
+              >
+                {savingSkill ? (
+                  <LoaderCircle className="size-3 animate-spin" />
+                ) : skillSaveNotice ? (
+                  <Check className="size-3 text-emerald-500" />
+                ) : (
+                  <Save className="size-3" />
+                )}
+                <span className="hidden 2xl:inline">
+                  {skillContent !== null &&
+                  savedSkillContent !== null &&
+                  skillContent !== savedSkillContent
+                    ? 'Save'
+                    : 'Saved'}
+                </span>
+              </Button>
+
               <Button
                 variant="ghost"
                 size="icon-sm"
-                onClick={() => setSelectedSkill(null)}
+                onClick={closeSelectedSkill}
                 className="text-muted-foreground hover:text-foreground"
               >
                 <X className="size-4" />
               </Button>
             </div>
 
-            <div className="flex-1 overflow-y-auto p-4">
-              <div className="mb-4 flex flex-col gap-2">
-                <div className="flex items-center gap-2">
-                  <span
-                    className={cn(
-                      'inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-[11px] font-medium',
-                      SOURCE_COLORS[selectedSkill.source].badge,
-                    )}
-                  >
-                    {selectedSkill.sourceLabel}
-                  </span>
-                  {selectedSkill.author && (
-                    <span className="text-muted-foreground text-[11px]">
-                      by {selectedSkill.author}
-                    </span>
-                  )}
-                </div>
-
-                <div className="border-border/40 bg-secondary/30 rounded-md border p-2 text-[11px] font-mono text-muted-foreground break-all">
-                  {selectedSkill.skillFilePath}
-                </div>
-              </div>
-
+            <div className="min-h-0 flex-1">
               {loadingContent ? (
                 <div className="flex h-48 flex-col items-center justify-center gap-2 text-muted-foreground">
                   <RefreshCw className="size-5 animate-spin text-primary" />
                   <span className="text-[12px]">Loading SKILL.md...</span>
                 </div>
+              ) : skillError && skillContent === null ? (
+                <div className="text-destructive p-4 text-[12px]">
+                  {skillError}
+                </div>
+              ) : skillContent !== null && savedSkillContent !== null ? (
+                <div className="flex h-full min-h-0 flex-col">
+                  {skillError && (
+                    <div className="border-destructive/30 bg-destructive/10 text-destructive shrink-0 border-b px-3 py-2 text-[11px]">
+                      {skillError}
+                    </div>
+                  )}
+                  <div className="min-h-0 flex-1">
+                    <DocumentDualEditor
+                      key={selectedSkill.id}
+                      filePath={selectedSkill.skillFilePath}
+                      language="markdown"
+                      content={skillContent}
+                      savedContent={savedSkillContent}
+                      onChange={setSkillContent}
+                      onSave={() => void saveSelectedSkill()}
+                      saving={savingSkill}
+                      saveNotice={skillSaveNotice}
+                      mode={skillMode}
+                      onModeChange={setSkillMode}
+                      showToolbar={false}
+                      initialMode="preview"
+                    />
+                  </div>
+                </div>
               ) : (
-                <div className="prose prose-invert max-w-none text-[13px]">
-                  <MarkdownRenderer content={skillContent || '*No content*'} />
+                <div className="text-muted-foreground p-4 text-[12px]">
+                  No content.
                 </div>
               )}
             </div>
           </aside>
         )}
       </div>
+    </div>
+  )
+}
+
+function clampSkillsDrawerWidth(width: number): number {
+  const viewportMaximum =
+    typeof window === 'undefined'
+      ? SKILLS_DRAWER_MAX_WIDTH
+      : Math.max(SKILLS_DRAWER_MIN_WIDTH, window.innerWidth - 360)
+  return Math.min(
+    Math.max(width, SKILLS_DRAWER_MIN_WIDTH),
+    Math.min(SKILLS_DRAWER_MAX_WIDTH, viewportMaximum),
+  )
+}
+
+function SkillsDrawerResizeHandle({
+  width,
+  onResize,
+}: {
+  width: number
+  onResize: (width: number) => void
+}) {
+  const [dragging, setDragging] = useState(false)
+  const dragRef = useRef<{
+    pointerId: number
+    startX: number
+    startWidth: number
+  } | null>(null)
+
+  const endDrag = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (dragRef.current?.pointerId !== event.pointerId) return
+    dragRef.current = null
+    setDragging(false)
+    document.documentElement.classList.remove('sidebar-resizing')
+  }
+
+  useEffect(
+    () => () => document.documentElement.classList.remove('sidebar-resizing'),
+    [],
+  )
+
+  return (
+    <div
+      role="separator"
+      aria-label="Resize skill editor"
+      aria-orientation="vertical"
+      aria-valuemin={SKILLS_DRAWER_MIN_WIDTH}
+      aria-valuemax={SKILLS_DRAWER_MAX_WIDTH}
+      aria-valuenow={Math.round(width)}
+      tabIndex={0}
+      title="Drag to resize, double-click to reset"
+      className="group/skill-resize absolute inset-y-0 -left-2 z-20 hidden w-4 cursor-col-resize touch-none md:block"
+      onPointerDown={(event) => {
+        if (event.button !== 0) return
+        dragRef.current = {
+          pointerId: event.pointerId,
+          startX: event.clientX,
+          startWidth: width,
+        }
+        event.currentTarget.setPointerCapture(event.pointerId)
+        setDragging(true)
+        document.documentElement.classList.add('sidebar-resizing')
+      }}
+      onPointerMove={(event) => {
+        const drag = dragRef.current
+        if (!drag || drag.pointerId !== event.pointerId) return
+        onResize(
+          clampSkillsDrawerWidth(
+            drag.startWidth - (event.clientX - drag.startX),
+          ),
+        )
+      }}
+      onPointerUp={endDrag}
+      onPointerCancel={endDrag}
+      onLostPointerCapture={endDrag}
+      onDoubleClick={() => onResize(SKILLS_DRAWER_DEFAULT_WIDTH)}
+      onKeyDown={(event) => {
+        if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return
+        event.preventDefault()
+        const delta = event.key === 'ArrowLeft' ? 16 : -16
+        onResize(clampSkillsDrawerWidth(width + delta))
+      }}
+    >
+      <div
+        className={cn(
+          'mx-auto h-full w-0.5 transition-colors',
+          dragging
+            ? 'bg-primary/60'
+            : 'group-hover/skill-resize:bg-primary/50',
+        )}
+      />
     </div>
   )
 }

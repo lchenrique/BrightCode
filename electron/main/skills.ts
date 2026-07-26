@@ -1,5 +1,5 @@
 import { ipcMain } from 'electron'
-import { readdir, readFile, stat } from 'node:fs/promises'
+import { readdir, readFile, writeFile, stat } from 'node:fs/promises'
 import { join, basename, dirname } from 'node:path'
 import { homedir } from 'node:os'
 import { IPC } from '../shared/ipc-channels'
@@ -204,6 +204,20 @@ export function registerSkillsIpc() {
       } catch (err) {
         throw new Error(
           `Failed to read skill file: ${err instanceof Error ? err.message : String(err)}`,
+        )
+      }
+    },
+  )
+
+  ipcMain.handle(
+    IPC.SKILLS_WRITE,
+    async (_e, filePath: string, content: string): Promise<boolean> => {
+      try {
+        await writeFile(filePath, content, 'utf-8')
+        return true
+      } catch (err) {
+        throw new Error(
+          `Failed to write skill file: ${err instanceof Error ? err.message : String(err)}`,
         )
       }
     },
