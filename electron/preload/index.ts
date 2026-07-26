@@ -121,6 +121,7 @@ interface TaskItem {
   id: string
   projectId: string | null
   title: string
+  selectedModel?: string
   createdAt: number
   updatedAt: number
 }
@@ -133,6 +134,7 @@ const tasks = {
     id?: string
     projectId: string | null
     title: string
+    selectedModel?: string
     createdAt?: number
     updatedAt?: number
   }): Promise<TaskItem> {
@@ -141,7 +143,10 @@ const tasks = {
   remove(id: string): Promise<void> {
     return ipcRenderer.invoke(IPC.TASKS_REMOVE, id)
   },
-  update(id: string, patch: Partial<Pick<TaskItem, 'title' | 'projectId'>>): Promise<void> {
+  update(
+    id: string,
+    patch: Partial<Pick<TaskItem, 'title' | 'projectId' | 'selectedModel'>>,
+  ): Promise<void> {
     return ipcRenderer.invoke(IPC.TASKS_UPDATE, id, patch)
   },
   getMessages<T = unknown>(taskId: string): Promise<T[]> {
@@ -253,7 +258,15 @@ const workspace = {
 // The renderer (LLM agent) calls `window.electronAPI.tools.execute(...)`
 // and gets back a uniform `{ ok, result } | { ok: false, error }` envelope.
 
-type ToolName = 'read_file' | 'write_file' | 'edit_file' | 'list_files' | 'search_files'
+type ToolName =
+  | 'read_file'
+  | 'write_file'
+  | 'edit_file'
+  | 'list_files'
+  | 'search_files'
+  | 'list_skills'
+  | 'read_skill'
+  | 'read_skill_file'
 
 type ToolArgs = {
   read_file: { path: string }
@@ -261,6 +274,9 @@ type ToolArgs = {
   edit_file: { path: string; oldText: string; newText: string; replaceAll?: boolean }
   list_files: { path?: string; recursive?: boolean }
   search_files: { query: string; path?: string; includePattern?: string }
+  list_skills: { query?: string }
+  read_skill: { skill: string }
+  read_skill_file: { skill: string; path: string }
 }
 
 type ToolExecuteRequest = {
@@ -422,6 +438,7 @@ function startProviderStream(payload: StreamStartPayload): ProviderStreamHandle 
 
 interface DiscoveredSkill {
   id: string
+  selector?: string
   name: string
   description: string
   source: 'codex' | 'agents' | 'gemini' | 'opencode' | 'project'
@@ -446,6 +463,47 @@ const skills = {
   },
 }
 
+type TerminalCreateResult =
+  | { ok: true; sessionId: string; shell: string; cwd: string }
+  | { ok: false; error: string }
+
+type TerminalDataEvent = { sessionId: string; data: string }
+type TerminalExitEvent = {
+  sessionId: string
+  exitCode: number
+  signal?: number
+}
+
+const terminal = {
+  create(
+    projectId: string,
+    dimensions?: { cols?: number; rows?: number },
+  ): Promise<TerminalCreateResult> {
+    return ipcRenderer.invoke(IPC.TERMINAL_CREATE, projectId, dimensions)
+  },
+  write(sessionId: string, data: string): void {
+    ipcRenderer.send(IPC.TERMINAL_WRITE, sessionId, data)
+  },
+  resize(sessionId: string, cols: number, rows: number): void {
+    ipcRenderer.send(IPC.TERMINAL_RESIZE, sessionId, { cols, rows })
+  },
+  kill(sessionId: string): Promise<boolean> {
+    return ipcRenderer.invoke(IPC.TERMINAL_KILL, sessionId)
+  },
+  onData(handler: (event: TerminalDataEvent) => void): () => void {
+    const wrapped = (_event: unknown, payload: TerminalDataEvent) =>
+      handler(payload)
+    ipcRenderer.on(IPC.TERMINAL_DATA, wrapped)
+    return () => ipcRenderer.off(IPC.TERMINAL_DATA, wrapped)
+  },
+  onExit(handler: (event: TerminalExitEvent) => void): () => void {
+    const wrapped = (_event: unknown, payload: TerminalExitEvent) =>
+      handler(payload)
+    ipcRenderer.on(IPC.TERMINAL_EXIT, wrapped)
+    return () => ipcRenderer.off(IPC.TERMINAL_EXIT, wrapped)
+  },
+}
+
 const electronAPI = {
   /** True when running inside the Electron wrapper. False in plain web dev. */
   isElectron: true,
@@ -464,6 +522,7 @@ const electronAPI = {
   workspace,
   tools,
   skills,
+  terminal,
   /** Forward a log message to the main process stdout. */
   log: rendererLog,
   /**
@@ -491,4 +550,7 @@ export type {
   ToolExecuteRequest,
   ToolResult,
   DiscoveredSkill,
+  TerminalCreateResult,
+  TerminalDataEvent,
+  TerminalExitEvent,
 }

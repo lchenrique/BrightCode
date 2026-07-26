@@ -56,6 +56,12 @@ export interface ModelInfo {
   contextWindow?: number
   supportsTools?: boolean
   supportsThinking?: boolean
+  /**
+   * Reasoning levels accepted by this concrete model. Gateways often expose
+   * models with different subsets (for example DeepSeek V4 accepts high/max,
+   * while Gemini Flash accepts minimal/low/medium/high).
+   */
+  thinkingLevels?: ThinkingLevel[]
   supportsImages?: boolean
   /** USD per 1M input tokens — shown in the picker if available. */
   inputCost?: number
@@ -79,9 +85,25 @@ export type StreamChunk =
   | { type: 'message_start' }
   | { type: 'text_delta'; text: string }
   | { type: 'thinking_delta'; text: string }
-  | { type: 'tool_use_start'; id: string; name: string }
-  | { type: 'tool_use_delta'; id: string; input: unknown; name?: string }
+  | {
+      type: 'tool_use_start'
+      id: string
+      name: string
+      providerItem?: Record<string, unknown>
+    }
+  | {
+      type: 'tool_use_delta'
+      id: string
+      input: unknown
+      name?: string
+      providerItem?: Record<string, unknown>
+    }
   | { type: 'tool_use_end'; id: string }
+  | {
+      type: 'provider_output_item'
+      provider: 'openai-responses'
+      item: Record<string, unknown>
+    }
   | {
       type: 'message_end'
       stopReason: 'end_turn' | 'tool_use' | 'max_tokens' | 'stop' | 'error'
@@ -95,7 +117,13 @@ export type StreamChunk =
 export type ContentBlock =
   | { type: 'text'; text: string }
   | { type: 'image'; data: string; mediaType: string }
-  | { type: 'tool_use'; id: string; name: string; input: unknown }
+  | {
+      type: 'tool_use'
+      id: string
+      name: string
+      input: unknown
+      providerItem?: Record<string, unknown>
+    }
   | { type: 'tool_result'; toolUseId: string; content: string; isError?: boolean }
   | { type: 'thinking'; text: string; signature?: string }
 
@@ -107,11 +135,21 @@ export interface ChatMessage {
   /** Required when role === 'tool'. */
   toolCallId?: string
   toolName?: string
+  /**
+   * Provider-native response items that must be replayed on stateless
+   * continuations (for example encrypted Responses API reasoning items).
+   */
+  providerOutputItems?: Array<Record<string, unknown>>
+  /**
+   * Interleaved reasoning returned by OpenAI-compatible APIs. DeepSeek
+   * requires this value to be replayed on every subsequent tool round.
+   */
+  reasoningContent?: string
 }
 
 // ─── Stream parameters ────────────────────────────────────────────────────
 
-export type ThinkingLevel = 'off' | 'minimal' | 'low' | 'medium' | 'high'
+export type ThinkingLevel = 'off' | 'minimal' | 'low' | 'medium' | 'high' | 'max'
 
 export interface StreamParams {
   /** Either 'gpt-5' (resolved via registry) or 'openai/gpt-5' (explicit). */
@@ -213,10 +251,16 @@ export interface IAgentProvider {
  * (e.g. streamed JSON arguments for tool_use).
  */
 export interface FormatContext {
-  /** Map a single SSE event into a chunk (or null to skip). */
-  processEvent(event: { event?: string; data: string; id?: string }): StreamChunk | null
+  /**
+   * Map a single SSE event into one or more chunks (or null to skip).
+   * OpenAI-compatible gateways may batch reasoning, text, and several
+   * tool-call deltas in the same SSE event.
+   */
+  processEvent(
+    event: { event?: string; data: string; id?: string },
+  ): StreamChunk | StreamChunk[] | null
   /** Optional last-chance hook called once after the stream ends. */
-  finalize(): StreamChunk | null
+  finalize(): StreamChunk | StreamChunk[] | null
   /** Emit the terminal message_end chunk. Always called once per stream. */
   emitMessageEnd(): StreamChunk
 }

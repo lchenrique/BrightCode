@@ -21,6 +21,9 @@ export function createOpenCodeZenProvider(): IAgentProvider {
     baseURL: OPENCODE_ZEN_BASE_URL,
     apiFormat: 'openai-chat',
     staticModels: opencodeZenModels,
+    unauthenticatedHeaders: {
+      Authorization: 'Bearer public',
+    },
     // No modelPrefix — Zen doesn't use a namespace prefix on model ids.
   })
 }

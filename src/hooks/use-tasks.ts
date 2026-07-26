@@ -56,7 +56,11 @@ export function useTask(id: string | null): Task | undefined {
 /** Imperative actions — return stable callbacks. */
 export function useTasksActions() {
   const create = useCallback(
-    (input: { projectId: string | null; title: string }) =>
+    (input: {
+      projectId: string | null
+      title: string
+      selectedModel?: string
+    }) =>
       tasksStore.create(input),
     [],
   )

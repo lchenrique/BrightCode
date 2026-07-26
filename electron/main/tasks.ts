@@ -12,6 +12,7 @@ export type Task = {
   id: string
   projectId: string | null
   title: string
+  selectedModel?: string
   createdAt: number
   updatedAt: number
 }
@@ -34,6 +35,7 @@ export function createTask(input: {
   id?: string
   projectId: string | null
   title: string
+  selectedModel?: string
   createdAt?: number
   updatedAt?: number
 }): Task {
@@ -42,6 +44,7 @@ export function createTask(input: {
     id: input.id || crypto.randomUUID(),
     projectId: input.projectId,
     title: input.title,
+    selectedModel: input.selectedModel,
     createdAt: input.createdAt ?? now,
     updatedAt: input.updatedAt ?? now,
   }
@@ -64,7 +67,10 @@ export function removeTask(id: string): void {
   broadcastChanged()
 }
 
-export function updateTask(id: string, patch: Partial<Pick<Task, 'title' | 'projectId'>>): void {
+export function updateTask(
+  id: string,
+  patch: Partial<Pick<Task, 'title' | 'projectId' | 'selectedModel'>>,
+): void {
   const existing = tasksStore.get('tasks')
   tasksStore.set(
     'tasks',
@@ -92,12 +98,25 @@ function broadcastChanged(): void {
 
 export function registerTasksIpc(): void {
   ipcMain.handle(IPC.TASKS_LIST, () => listTasks())
-  ipcMain.handle(IPC.TASKS_CREATE, (_e, input: { projectId: string | null; title: string }) =>
-    createTask(input),
+  ipcMain.handle(
+    IPC.TASKS_CREATE,
+    (
+      _e,
+      input: {
+        projectId: string | null
+        title: string
+        selectedModel?: string
+      },
+    ) => createTask(input),
   )
   ipcMain.handle(IPC.TASKS_REMOVE, (_e, id: string) => removeTask(id))
-  ipcMain.handle(IPC.TASKS_UPDATE, (_e, id: string, patch: Partial<Pick<Task, 'title' | 'projectId'>>) =>
-    updateTask(id, patch),
+  ipcMain.handle(
+    IPC.TASKS_UPDATE,
+    (
+      _e,
+      id: string,
+      patch: Partial<Pick<Task, 'title' | 'projectId' | 'selectedModel'>>,
+    ) => updateTask(id, patch),
   )
   ipcMain.handle(IPC.TASKS_GET_MESSAGES, (_e, taskId: string) => getTaskMessages(taskId))
   ipcMain.handle(IPC.TASKS_SAVE_MESSAGES, (_e, taskId: string, messages: unknown[]) =>

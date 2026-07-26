@@ -20,6 +20,8 @@ export type Task = {
   projectId: string | null
   /** Auto-generated from the first message; user-editable later. */
   title: string
+  /** Provider/model selection restored whenever this conversation is opened. */
+  selectedModel?: string
   createdAt: number
   updatedAt: number
 }
@@ -80,12 +82,17 @@ class TasksStore {
    * Create a task and prepend it to the list (newest first). Returns the
    * newly-created task so callers can immediately switch to it.
    */
-  create(input: { projectId: string | null; title: string }): Task {
+  create(input: {
+    projectId: string | null
+    title: string
+    selectedModel?: string
+  }): Task {
     const now = Date.now()
     const task: Task = {
       id: crypto.randomUUID(),
       projectId: input.projectId,
       title: input.title,
+      selectedModel: input.selectedModel,
       createdAt: now,
       updatedAt: now,
     }
@@ -108,7 +115,10 @@ class TasksStore {
     }
   }
 
-  update(id: string, patch: Partial<Pick<Task, 'title' | 'projectId'>>): void {
+  update(
+    id: string,
+    patch: Partial<Pick<Task, 'title' | 'projectId' | 'selectedModel'>>,
+  ): void {
     this.tasks = this.tasks.map((t) =>
       t.id === id ? { ...t, ...patch, updatedAt: Date.now() } : t,
     )

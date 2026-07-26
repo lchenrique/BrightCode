@@ -113,4 +113,56 @@ export const AGENT_TOOLS: ToolDefinition[] = [
       required: ['query'],
     },
   },
+  {
+    name: 'list_skills',
+    description:
+      'Discover reusable agent skills installed on the computer or in the active project. Search by name, description, tag, or source. Returns safe selectors; use read_skill to load a selected skill before applying it.',
+    parameters: {
+      type: 'object',
+      properties: {
+        query: {
+          type: 'string',
+          description:
+            'Optional search text. Omit it to list every available skill.',
+        },
+      },
+    },
+  },
+  {
+    name: 'read_skill',
+    description:
+      'Load the complete SKILL.md instructions for one available skill. Call this before applying a skill that the user named or whose description clearly matches the task.',
+    parameters: {
+      type: 'object',
+      properties: {
+        skill: {
+          type: 'string',
+          description:
+            'The exact skill selector returned by list_skills or the exact skill name when unambiguous.',
+        },
+      },
+      required: ['skill'],
+    },
+  },
+  {
+    name: 'read_skill_file',
+    description:
+      'Read a text instruction, reference, template, or other supporting file referenced by a loaded skill. The path must be relative to that skill folder.',
+    parameters: {
+      type: 'object',
+      properties: {
+        skill: {
+          type: 'string',
+          description:
+            'The exact skill selector returned by list_skills or read_skill.',
+        },
+        path: {
+          type: 'string',
+          description:
+            'Supporting file path relative to the skill folder, such as "references/api.md".',
+        },
+      },
+      required: ['skill', 'path'],
+    },
+  },
 ]

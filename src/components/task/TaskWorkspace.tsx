@@ -22,7 +22,13 @@ import {
   type ProjectFileEntry,
 } from '@/components/files/ProjectFileTreePanel'
 import { ViewTopBar } from '@/components/layout/ViewTopBar'
-import { notifyProjectFilesChanged } from '@/lib/projects/file-events'
+import { TerminalPanel } from '@/components/terminal/TerminalPanel'
+import {
+  consumePendingProjectFileOpen,
+  notifyProjectFilesChanged,
+  OPEN_PROJECT_FILE_EVENT,
+  type OpenProjectFileDetail,
+} from '@/lib/projects/file-events'
 import type { Project } from '@/lib/projects/store'
 import { cn } from '@/lib/utils'
 
@@ -47,6 +53,9 @@ const SPLIT_MIN_PERCENT = 25
 const SPLIT_MAX_PERCENT = 75
 const SPLIT_SIZE_STORAGE_KEY = 'brightcode:workspace-split-percent'
 const FILE_TAB_DRAG_TYPE = 'application/x-brightcode-file'
+const TERMINAL_HEIGHT_STORAGE_KEY = 'brightcode:terminal-panel-height'
+const TERMINAL_DEFAULT_HEIGHT = 260
+const TERMINAL_MIN_HEIGHT = 140
 
 function getExtension(path: string): string {
   const name = path.split('/').pop() ?? path
@@ -241,6 +250,15 @@ export function TaskWorkspace({
       ? clampSplitPercent(stored)
       : SPLIT_DEFAULT_PERCENT
   })
+  const [terminalOpen, setTerminalOpen] = useState(false)
+  const [terminalHeight, setTerminalHeight] = useState(() => {
+    const stored = Number.parseFloat(
+      window.localStorage.getItem(TERMINAL_HEIGHT_STORAGE_KEY) ?? '',
+    )
+    return Number.isFinite(stored)
+      ? Math.max(TERMINAL_MIN_HEIGHT, stored)
+      : TERMINAL_DEFAULT_HEIGHT
+  })
   const [loadingPath, setLoadingPath] = useState<string | null>(null)
   const [savingPath, setSavingPath] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -268,6 +286,25 @@ export function TaskWorkspace({
       String(splitPercent),
     )
   }, [splitPercent])
+
+  useEffect(() => {
+    window.localStorage.setItem(
+      TERMINAL_HEIGHT_STORAGE_KEY,
+      String(terminalHeight),
+    )
+  }, [terminalHeight])
+
+  useEffect(() => {
+    const toggleTerminal = (event: KeyboardEvent) => {
+      if (!(event.ctrlKey || event.metaKey) || event.code !== 'Backquote') {
+        return
+      }
+      event.preventDefault()
+      if (project) setTerminalOpen((open) => !open)
+    }
+    window.addEventListener('keydown', toggleTerminal)
+    return () => window.removeEventListener('keydown', toggleTerminal)
+  }, [project])
 
   useEffect(() => {
     if (!saveNotice) return
@@ -323,6 +360,31 @@ export function TaskWorkspace({
     },
     [project, splitFilePath, tabs],
   )
+
+  useEffect(() => {
+    if (!project) return
+
+    const openRequestedFile = (detail: OpenProjectFileDetail) => {
+      if (detail.projectId !== project.id) return
+      void openFile({
+        name: detail.name,
+        path: detail.path,
+        isDir: false,
+      })
+    }
+    const handleOpenRequest = (event: Event) => {
+      openRequestedFile(
+        (event as CustomEvent<OpenProjectFileDetail>).detail,
+      )
+    }
+
+    window.addEventListener(OPEN_PROJECT_FILE_EVENT, handleOpenRequest)
+    const pending = consumePendingProjectFileOpen(project.id)
+    if (pending) openRequestedFile(pending)
+
+    return () =>
+      window.removeEventListener(OPEN_PROJECT_FILE_EVENT, handleOpenRequest)
+  }, [openFile, project])
 
   const closeFile = useCallback(
     (path: string) => {
@@ -422,9 +484,10 @@ export function TaskWorkspace({
         folderOpen={explorerOpen}
         folderDisabled={!project}
         onToggleFolder={onToggleExplorer}
-        progressOpen={project ? explorerOpen : undefined}
-        onToggleProgress={onToggleExplorer}
-        panelLabel="Toggle project file explorer"
+        terminalOpen={terminalOpen}
+        onToggleTerminal={
+          project ? () => setTerminalOpen((open) => !open) : undefined
+        }
         project={project}
         onProjectActionError={setError}
       />
@@ -593,6 +656,16 @@ export function TaskWorkspace({
               />
             )}
           </div>
+
+          {project && terminalOpen && (
+            <TerminalPanel
+              key={project.id}
+              project={project}
+              height={terminalHeight}
+              onHeightChange={setTerminalHeight}
+              onRequestClose={() => setTerminalOpen(false)}
+            />
+          )}
         </section>
 
         {project && (

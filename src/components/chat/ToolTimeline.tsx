@@ -8,6 +8,7 @@
  */
 
 import {
+  BookOpen,
   Brain,
   Code,
   FileEdit,
@@ -73,6 +74,10 @@ function getToolIcon(name: string) {
       return FolderSearch
     case 'search_files':
       return FileSearch
+    case 'list_skills':
+    case 'read_skill':
+    case 'read_skill_file':
+      return BookOpen
     case 'bash':
       return TerminalSquare
     default:
@@ -92,6 +97,12 @@ function getToolLabel(name: string): string {
       return 'List Files'
     case 'search_files':
       return 'Search Files'
+    case 'list_skills':
+      return 'Discover Skills'
+    case 'read_skill':
+      return 'Load Skill'
+    case 'read_skill_file':
+      return 'Read Skill File'
     case 'bash':
       return 'Terminal'
     default:
@@ -110,6 +121,15 @@ function summarizeArgs(name: string, args: unknown): string {
   }
   if (name === 'search_files') {
     return `"${a.query}" in ${a.path ?? '.'}`
+  }
+  if (name === 'list_skills') {
+    return a.query ? String(a.query) : 'all available skills'
+  }
+  if (name === 'read_skill') {
+    return String(a.skill ?? '')
+  }
+  if (name === 'read_skill_file') {
+    return `${String(a.skill ?? '')} · ${String(a.path ?? '')}`
   }
   if (name === 'bash') {
     return String(a.command ?? '')

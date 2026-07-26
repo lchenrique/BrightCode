@@ -2,10 +2,9 @@ import {
   ChevronDown,
   Code2,
   FolderOpen,
-  Globe,
   MessageSquare,
   PanelRight,
-  SlidersHorizontal,
+  SquareTerminal,
 } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { ProjectActionItems } from '@/components/projects/ProjectActionItems'
@@ -18,11 +17,6 @@ import { SidebarTrigger } from '@/components/ui/sidebar'
 import { runProjectOpenAction } from '@/lib/projects/open-project'
 import type { Project } from '@/lib/projects/store'
 import { cn } from '@/lib/utils'
-
-const chromeButtons = [
-  { label: 'Open in browser', icon: Globe },
-  { label: 'Task settings', icon: SlidersHorizontal },
-] as const
 
 /**
  * Shared top bar for the task and agent conversation views:
@@ -40,6 +34,8 @@ export function ViewTopBar({
   folderOpen,
   onToggleFolder,
   folderDisabled = !onToggleFolder,
+  terminalOpen,
+  onToggleTerminal,
   progressOpen,
   onToggleProgress,
   panelLabel = 'Toggle right sidebar',
@@ -56,6 +52,9 @@ export function ViewTopBar({
   folderOpen?: boolean
   onToggleFolder?: () => void
   folderDisabled?: boolean
+  /** Opens the integrated bottom terminal panel when available. */
+  terminalOpen?: boolean
+  onToggleTerminal?: () => void
   /** Optional: when provided, the progress toggle button renders. */
   progressOpen?: boolean
   onToggleProgress?: () => void
@@ -147,17 +146,23 @@ export function ViewTopBar({
           </DropdownMenu>
         </div>
 
-        {chromeButtons.map(({ label, icon: Icon }) => (
+        {onToggleTerminal && (
           <button
-            key={label}
             type="button"
-            aria-label={label}
-            className="text-muted-foreground hover:text-foreground hover:bg-accent/50 inline-flex size-8 items-center justify-center rounded-md transition-colors"
-            onClick={() => console.log(`[topbar] ${label}`)}
+            aria-label="Toggle terminal"
+            aria-pressed={terminalOpen}
+            title="Terminal (Ctrl+`)"
+            className={cn(
+              'inline-flex size-8 items-center justify-center rounded-md transition-colors',
+              terminalOpen
+                ? 'text-foreground bg-accent/60'
+                : 'text-muted-foreground hover:text-foreground hover:bg-accent/50',
+            )}
+            onClick={onToggleTerminal}
           >
-            <Icon className="size-4" />
+            <SquareTerminal className="size-4" />
           </button>
-        ))}
+        )}
 
         <button
           type="button"

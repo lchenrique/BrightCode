@@ -22,13 +22,68 @@ export interface Message {
   /** Extra context for error messages (stack, request url, etc). */
   errorDetails?: string
   /** Tool calls made by the assistant (one bubble can show many). */
-  toolCalls?: Array<{ id: string; name: string; input: unknown }>
+  toolCalls?: Array<{
+    id: string
+    name: string
+    input: unknown
+    providerItem?: Record<string, unknown>
+  }>
+  /** Stateless provider output that must survive task persistence. */
+  providerOutputItems?: Array<Record<string, unknown>>
   /** True once the tool call has been executed and the result fed back. */
   toolResolved?: boolean
   /** Short label for the tool result, e.g. "12 files" or "324 bytes". */
   toolResultSummary?: string
   /** True when the tool call errored (vs a normal return). */
   toolError?: boolean
+}
+
+/**
+ * Restore the invariant required by tool-calling APIs: every assistant tool
+ * call must be followed by exactly one result before the conversation moves
+ * on. Older BrightCode builds could persist only part of a parallel batch.
+ */
+export function repairIncompleteToolHistory(messages: Message[]): Message[] {
+  const repaired: Message[] = []
+  let changed = false
+
+  for (let index = 0; index < messages.length; index++) {
+    const message = messages[index]!
+    repaired.push(message)
+
+    if (message.role !== 'assistant' || !message.toolCalls?.length) {
+      continue
+    }
+
+    const resolvedIds = new Set<string>()
+    let cursor = index + 1
+    while (cursor < messages.length && messages[cursor]?.role === 'tool') {
+      const toolMessage = messages[cursor]!
+      repaired.push(toolMessage)
+      const resolvedId = toolMessage.toolCalls?.[0]?.id
+      if (resolvedId) resolvedIds.add(resolvedId)
+      cursor += 1
+    }
+
+    for (const toolCall of message.toolCalls) {
+      if (resolvedIds.has(toolCall.id)) continue
+      changed = true
+      repaired.push({
+        id: `recovered-${message.id}-${toolCall.id}`,
+        role: 'tool',
+        content:
+          'Error: the previous tool execution was interrupted or its result was not persisted. Retry the tool if it is still needed.',
+        toolResolved: true,
+        toolResultSummary: 'result unavailable — retry if needed',
+        toolError: true,
+        toolCalls: [toolCall],
+      })
+    }
+
+    index = cursor - 1
+  }
+
+  return changed ? repaired : messages
 }
 
 // ── Wire translation (UI Message → ChatMessage for the model) ──────────
@@ -50,16 +105,27 @@ export function toChatMessage(m: Message): ChatMessage {
       role: 'assistant',
       content: [
         ...(m.content ? [{ type: 'text' as const, text: m.content }] : []),
+        ...(m.thinking
+          ? [{ type: 'thinking' as const, text: m.thinking }]
+          : []),
         ...m.toolCalls.map((tc) => ({
           type: 'tool_use' as const,
           id: tc.id,
           name: tc.name,
           input: (tc.input ?? {}) as Record<string, unknown>,
+          ...(tc.providerItem ? { providerItem: tc.providerItem } : {}),
         })),
       ],
+      providerOutputItems: m.providerOutputItems,
+      reasoningContent: m.thinking ?? '',
     }
   }
-  return { role: m.role as 'user' | 'assistant' | 'system', content: m.content }
+  return {
+    role: m.role as 'user' | 'assistant' | 'system',
+    content: m.content,
+    providerOutputItems: m.providerOutputItems,
+    ...(m.role === 'assistant' ? { reasoningContent: m.thinking ?? '' } : {}),
+  }
 }
 
 export function serializeToolResult(result: unknown): string {
@@ -99,6 +165,18 @@ export function summarizeToolResult(name: string, result: unknown): string {
   }
   if (name === 'search_files' && Array.isArray(result)) {
     return `${result.length} match${result.length === 1 ? '' : 'es'}`
+  }
+  if (name === 'list_skills' && Array.isArray(result)) {
+    return `${result.length} skill${result.length === 1 ? '' : 's'}`
+  }
+  if (
+    (name === 'read_skill' || name === 'read_skill_file') &&
+    result &&
+    typeof result === 'object' &&
+    'content' in result &&
+    typeof result.content === 'string'
+  ) {
+    return `${result.content.length} chars`
   }
   return 'done'
 }

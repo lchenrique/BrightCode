@@ -39,6 +39,7 @@ import {
 } from './fs-ops'
 import { registerToolsIpc } from './tools'
 import { registerSkillsIpc } from './skills'
+import { registerTerminalIpc } from './terminal'
 
 // electron-store is CJS in v8; this interop makes the default import work.
 const StoreCtor = (Store as unknown as { default?: typeof Store }).default ?? Store
@@ -106,6 +107,7 @@ function createWindow(): void {
     show: false,
     backgroundColor: '#0a0c10',
     title: 'BrightCode',
+    icon: join(__dirname, '../../build/icon.png'),
     autoHideMenuBar: true,
     webPreferences: {
       preload: join(__dirname, '../preload/index.cjs'),
@@ -146,7 +148,7 @@ function createWindow(): void {
     console.log('[brightcode] loading renderer from', devUrl)
     void mainWindow.loadURL(devUrl)
   } else {
-    const indexPath = join(__dirname, '../renderer/index.html')
+    const indexPath = join(__dirname, '../../dist/index.html')
     console.log('[brightcode] loading renderer from file', indexPath)
     void mainWindow.loadFile(indexPath)
   }
@@ -253,6 +255,7 @@ registerOAuthIpc()
 registerFsIpc()
 registerToolsIpc()
 registerSkillsIpc()
+registerTerminalIpc()
 
 // ── App lifecycle ──────────────────────────────────────────────────────
 

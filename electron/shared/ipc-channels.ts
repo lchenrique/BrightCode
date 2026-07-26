@@ -100,6 +100,14 @@ export const IPC = {
   SKILLS_LIST: 'skills:list',
   SKILLS_READ: 'skills:read',
   SKILLS_WRITE: 'skills:write',
+
+  /** Integrated project terminal (PTY) lifecycle and streaming. */
+  TERMINAL_CREATE: 'terminal:create',
+  TERMINAL_WRITE: 'terminal:write',
+  TERMINAL_RESIZE: 'terminal:resize',
+  TERMINAL_KILL: 'terminal:kill',
+  TERMINAL_DATA: 'terminal:data',
+  TERMINAL_EXIT: 'terminal:exit',
 } as const
 
 export type IpcChannel = (typeof IPC)[keyof typeof IPC]

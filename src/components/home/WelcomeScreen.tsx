@@ -13,7 +13,7 @@
  * the task takes over.
  */
 
-import { useMemo } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Folder, ChevronDown, KeyRound, Settings } from 'lucide-react'
 import { ChatInput, type ModelGroup } from './ChatInput'
 import { FileTypeButtons } from './FileTypeButtons'
@@ -21,11 +21,16 @@ import { GridBackground } from './GridBackground'
 import {
   useAvailableModels,
   useAvailableModelsGrouped,
+  useDefaultModel,
 } from '@/hooks/use-provider-registry'
 import { SidebarTrigger } from '@/components/ui/sidebar'
 import { Button } from '@/components/ui/button'
 import { useSettings } from '@/hooks/use-settings'
 import { useActiveProject } from '@/hooks/use-projects'
+import {
+  readLastSelectedModel,
+  saveLastSelectedModel,
+} from '@/lib/agents/model-preference'
 
 export function WelcomeScreen({
   onCreateTask,
@@ -35,13 +40,15 @@ export function WelcomeScreen({
    * caller is responsible for creating a task, parking the message
    * for the TaskView to auto-send, and switching the view.
    */
-  onCreateTask: (message: string) => void
+  onCreateTask: (message: string, selectedModel?: string) => void
 }) {
   const { openSettings } = useSettings()
   const available = useAvailableModels()
   const grouped = useAvailableModelsGrouped()
+  const defaultModel = useDefaultModel()
   const activeProject = useActiveProject()
   const hasAnyModel = available.length > 0
+  const [selectedModel, setSelectedModel] = useState(readLastSelectedModel)
 
   // Grouped model picker data — passed straight to ChatInput in the hero.
   const modelGroups = useMemo<ModelGroup[]>(
@@ -53,6 +60,35 @@ export function WelcomeScreen({
         models: g.models,
       })),
     [grouped],
+  )
+
+  useEffect(() => {
+    setSelectedModel((previous) => {
+      if (
+        previous &&
+        available.some((model) => `${model.provider}/${model.id}` === previous)
+      ) {
+        return previous
+      }
+      if (defaultModel) {
+        return `${defaultModel.provider}/${defaultModel.id}`
+      }
+      const first = available[0]
+      return first ? `${first.provider}/${first.id}` : previous
+    })
+  }, [available, defaultModel])
+
+  const handleModelChange = useCallback((model: string) => {
+    setSelectedModel(model)
+    saveLastSelectedModel(model)
+  }, [])
+
+  const handleCreateTask = useCallback(
+    (message: string) => {
+      if (selectedModel) saveLastSelectedModel(selectedModel)
+      onCreateTask(message, selectedModel || undefined)
+    },
+    [onCreateTask, selectedModel],
   )
 
   return (
@@ -79,7 +115,9 @@ export function WelcomeScreen({
             {hasAnyModel ? (
               <ChatInput
                 modelGroups={modelGroups}
-                onSend={onCreateTask}
+                selectedModel={selectedModel}
+                onModelChange={handleModelChange}
+                onSend={handleCreateTask}
                 emptyModelMessage="Add a provider in Settings"
                 autoFocus
               />

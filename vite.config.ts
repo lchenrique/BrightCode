@@ -46,7 +46,7 @@ export default defineConfig({
           build: {
             outDir: 'out/main',
             rollupOptions: {
-              external: ['electron-store', 'keytar'],
+              external: ['electron-store', 'keytar', 'node-pty'],
             },
           },
         },
@@ -84,6 +84,6 @@ export default defineConfig({
     : undefined,
   // Avoid `optimizeDeps` from pre-bundling the main process deps.
   optimizeDeps: {
-    exclude: ['electron-store', 'keytar'],
+    exclude: ['electron-store', 'keytar', 'node-pty'],
   },
 })

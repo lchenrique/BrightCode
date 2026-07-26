@@ -7,9 +7,11 @@ import { AgentView } from '@/components/agent/AgentView'
 import { CreateAgentDialog } from '@/components/agent/CreateAgentDialog'
 import { AgentSettingDialog } from '@/components/agent/AgentSettingDialog'
 import { SettingsDialog } from '@/components/settings/SettingsDialog'
+import { SearchDialog } from '@/components/search/SearchDialog'
 import { useSettingsListener } from '@/hooks/use-settings'
 import { useActiveProject, useProjectsActions } from '@/hooks/use-projects'
 import { tasksStore, deriveTaskTitle } from '@/lib/tasks/store'
+import { requestProjectFileOpen } from '@/lib/projects/file-events'
 
 import { SkillsView } from '@/components/skills/SkillsView'
 
@@ -52,6 +54,7 @@ function getInitialSidebarWidth() {
 export function AppShell() {
   const [view, setView] = useState<View>({ kind: 'welcome' })
   const [settingsOpen, setSettingsOpen] = useState(false)
+  const [searchOpen, setSearchOpen] = useState(false)
   const [createAgentOpen, setCreateAgentOpen] = useState(false)
   const [agentSettings, setAgentSettings] = useState<{
     name: string
@@ -64,6 +67,18 @@ export function AppShell() {
   useEffect(() => {
     localStorage.setItem(SIDEBAR_WIDTH_STORAGE_KEY, String(sidebarWidth))
   }, [sidebarWidth])
+
+  useEffect(() => {
+    const openSearch = (event: KeyboardEvent) => {
+      if (!(event.ctrlKey || event.metaKey) || event.key.toLowerCase() !== 'k') {
+        return
+      }
+      event.preventDefault()
+      setSearchOpen(true)
+    }
+    window.addEventListener('keydown', openSearch)
+    return () => window.removeEventListener('keydown', openSearch)
+  }, [])
 
   // Allow any component to open Settings via the global event bus.
   useSettingsListener(setSettingsOpen)
@@ -81,10 +96,10 @@ export function AppShell() {
    * project, mirroring MiniMax Code.
    */
   const handleCreateTask = useCallback(
-    (message: string) => {
+    (message: string, selectedModel?: string) => {
       const projectId = activeProject?.id ?? null
       const title = deriveTaskTitle(message)
-      const task = tasksStore.create({ projectId, title })
+      const task = tasksStore.create({ projectId, title, selectedModel })
       tasksStore.setPendingFirstMessage(task.id, message)
       setView({ kind: 'task', id: task.id })
     },
@@ -104,6 +119,7 @@ export function AppShell() {
         <AppSidebar
           activeTaskId={view.kind === 'task' ? view.id : undefined}
           onNewTask={() => setView({ kind: 'welcome' })}
+          onOpenSearch={() => setSearchOpen(true)}
           onSelectSkills={() => setView({ kind: 'skills' })}
           onSelectProject={(projectId) => {
             void setActiveProject(projectId)
@@ -140,6 +156,32 @@ export function AppShell() {
       </div>
 
       <SettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen} />
+      <SearchDialog
+        open={searchOpen}
+        onOpenChange={setSearchOpen}
+        onSelectProject={(projectId) => {
+          void setActiveProject(projectId)
+          setView({ kind: 'welcome' })
+        }}
+        onSelectTask={(id) => {
+          const task = tasksStore.getTask(id)
+          if (task?.projectId) void setActiveProject(task.projectId)
+          setView({ kind: 'task', id })
+        }}
+        onSelectFile={({ projectId, path, name }) => {
+          void (async () => {
+            await setActiveProject(projectId)
+            const task =
+              tasksStore.getTasksByProject(projectId)[0] ??
+              tasksStore.create({
+                projectId,
+                title: 'Project workspace',
+              })
+            requestProjectFileOpen({ projectId, path, name })
+            setView({ kind: 'task', id: task.id })
+          })()
+        }}
+      />
       <CreateAgentDialog
         open={createAgentOpen}
         onOpenChange={setCreateAgentOpen}

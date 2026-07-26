@@ -579,6 +579,16 @@
   transition: none !important;
 }
 
+.panel-resizing,
+.panel-resizing * {
+  cursor: row-resize !important;
+  user-select: none !important;
+}
+
+.panel-resizing iframe {
+  pointer-events: none !important;
+}
+
 /*
  * AssistantTurn micro-animations. The shine sweeps a translucent gradient
  * across the "Thought N time(s)" header to signal the agent is still
@@ -616,6 +626,13 @@
   color: var(--primary);
   transform-origin: center;
   animation: assistant-working-bot 1.35s ease-in-out infinite;
+}
+
+/* Skip layout and paint for transcript entries outside the viewport. The
+   remembered intrinsic size keeps long-session scrolling stable. */
+.chat-history-item {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 160px;
 }
 
 @keyframes assistant-working-bot {

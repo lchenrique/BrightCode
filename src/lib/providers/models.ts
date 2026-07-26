@@ -168,6 +168,8 @@ export const opencodeZenModels: ModelInfo[] = [
     provider: 'opencode-zen',
     contextWindow: 200_000,
     supportsTools: true,
+    supportsThinking: true,
+    thinkingLevels: ['high', 'max'],
     free: true,
     requiresAuth: false,
   },
@@ -269,8 +271,8 @@ export const opencodeZenModels: ModelInfo[] = [
   { id: 'qwen3-5-plus', displayName: 'Qwen3.5 Plus', provider: 'opencode-zen', contextWindow: 200_000, supportsTools: true, inputCost: 0.2, outputCost: 1.2 },
 
   // DeepSeek family
-  { id: 'deepseek-v4-pro', displayName: 'DeepSeek V4 Pro', provider: 'opencode-zen', contextWindow: 1_000_000, supportsTools: true, inputCost: 1.74, outputCost: 3.48 },
-  { id: 'deepseek-v4-flash', displayName: 'DeepSeek V4 Flash', provider: 'opencode-zen', contextWindow: 1_000_000, supportsTools: true, inputCost: 0.14, outputCost: 0.28 },
+  { id: 'deepseek-v4-pro', displayName: 'DeepSeek V4 Pro', provider: 'opencode-zen', contextWindow: 1_000_000, supportsTools: true, supportsThinking: true, thinkingLevels: ['high', 'max'], inputCost: 1.74, outputCost: 3.48 },
+  { id: 'deepseek-v4-flash', displayName: 'DeepSeek V4 Flash', provider: 'opencode-zen', contextWindow: 1_000_000, supportsTools: true, supportsThinking: true, thinkingLevels: ['high', 'max'], inputCost: 0.14, outputCost: 0.28 },
 
   // MiniMax family
   { id: 'minimax-m3', displayName: 'MiniMax M3', provider: 'opencode-zen', contextWindow: 200_000, supportsTools: true, inputCost: 0.3, outputCost: 1.2 },

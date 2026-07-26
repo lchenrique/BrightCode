@@ -44,6 +44,11 @@ export interface CreateProviderConfig {
   modelPrefix?: string
   /** Optional header overrides per request. */
   extraHeaders?: Record<string, string>
+  /**
+   * Headers used only when streaming without a stored credential.
+   * OpenCode Zen's free tier authenticates with Bearer "public".
+   */
+  unauthenticatedHeaders?: Record<string, string>
   /** When true, the stream call is `non-streaming` then re-emitted as one chunk. */
   fakeStreaming?: boolean
 }
@@ -57,6 +62,11 @@ const FORMAT_HANDLERS: Record<ApiFormat, typeof openaiChatHandler | undefined> =
 }
 
 const isElectron = typeof window !== 'undefined' && typeof window.electronAPI !== 'undefined'
+
+function asChunks(value: StreamChunk | StreamChunk[] | null): StreamChunk[] {
+  if (!value) return []
+  return Array.isArray(value) ? value : [value]
+}
 
 export function createProvider(config: CreateProviderConfig): IAgentProvider {
   const formatHandler = config.customFormatHandler ?? FORMAT_HANDLERS[config.apiFormat]
@@ -96,6 +106,16 @@ export function createProvider(config: CreateProviderConfig): IAgentProvider {
             headers[k] = v
           })
         }
+        for (const [key, value] of Object.entries(config.extraHeaders ?? {})) {
+          headers[key] = value
+        }
+        if (!credential) {
+          for (const [key, value] of Object.entries(
+            config.unauthenticatedHeaders ?? {},
+          )) {
+            headers[key] = value
+          }
+        }
         const body = typeof init.body === 'string' ? init.body : ''
 
         const handle = window.electronAPI.providerStream({
@@ -111,20 +131,19 @@ export function createProvider(config: CreateProviderConfig): IAgentProvider {
         // Re-creating the context per chunk silently drops every delta
         // after the first — see the tool_use_start/delta pattern.
         const context = formatHandler.createContext()
-        const finalize = (context as { finalize?: () => StreamChunk | null }).finalize
         try {
           for await (const { raw } of handle.chunks) {
             const event = { event: 'message', data: raw }
-            const chunk = context.processEvent(event)
-            if (chunk) yield chunk
+            for (const chunk of asChunks(context.processEvent(event))) {
+              yield chunk
+            }
           }
         } catch (err) {
           yield { type: 'error', error: err instanceof Error ? err : new Error(String(err)) }
           return
         }
-        if (finalize) {
-          const tail = finalize()
-          if (tail) yield tail
+        for (const tail of asChunks(context.finalize())) {
+          yield tail
         }
         // Always emit exactly one message_end
         yield context.emitMessageEnd()
@@ -140,6 +159,13 @@ export function createProvider(config: CreateProviderConfig): IAgentProvider {
         }
         init.headers = merged
       }
+      if (!credential && config.unauthenticatedHeaders) {
+        const merged = new Headers(init.headers as HeadersInit | undefined)
+        for (const [k, v] of Object.entries(config.unauthenticatedHeaders)) {
+          merged.set(k, v)
+        }
+        init.headers = merged
+      }
 
       const response = await fetch(url, init)
       if (!response.ok) {
@@ -150,12 +176,11 @@ export function createProvider(config: CreateProviderConfig): IAgentProvider {
       }
 
       const context = formatHandler.createContext()
-      const finalize = (context as { finalize?: () => StreamChunk | null }).finalize
-
       try {
         for await (const event of parseSSE(response.body, effectiveParams.signal)) {
-          const chunk = context.processEvent(event)
-          if (chunk) yield chunk
+          for (const chunk of asChunks(context.processEvent(event))) {
+            yield chunk
+          }
         }
       } catch (err) {
         if (err instanceof Error && err.name === 'AbortError') {
@@ -165,9 +190,8 @@ export function createProvider(config: CreateProviderConfig): IAgentProvider {
         }
       }
 
-      if (finalize) {
-        const tail = finalize()
-        if (tail) yield tail
+      for (const tail of asChunks(context.finalize())) {
+        yield tail
       }
       yield context.emitMessageEnd()
     },

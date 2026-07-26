@@ -88,7 +88,10 @@ function mapFinishReason(reason: string | null | undefined): 'end_turn' | 'tool_
   }
 }
 
-function mapMessagesToOpenAI(messages: ChatMessage[]): Array<Record<string, unknown>> {
+function mapMessagesToOpenAI(
+  messages: ChatMessage[],
+  interleavedReasoningField?: 'reasoning_content' | 'reasoning' | 'reasoning_details',
+): Array<Record<string, unknown>> {
   const out: Array<Record<string, unknown>> = []
   for (const m of messages) {
     if (m.role === 'system') {
@@ -135,11 +138,22 @@ function mapMessagesToOpenAI(messages: ChatMessage[]): Array<Record<string, unkn
                 .map((b) => (b as { type: 'text'; text: string }).text)
                 .join('')
             : ''
+      const reasoningText =
+        m.reasoningContent ??
+        (Array.isArray(m.content)
+          ? (m.content as ContentBlock[])
+              .filter((b) => b.type === 'thinking')
+              .map((b) => (b as { type: 'thinking'; text: string }).text)
+              .join('')
+          : '')
 
       out.push({
         role: 'assistant',
         content: text || null,
         ...(toolCalls && toolCalls.length > 0 ? { tool_calls: toolCalls } : {}),
+        ...(interleavedReasoningField
+          ? { [interleavedReasoningField]: reasoningText }
+          : {}),
       })
       continue
     }
@@ -156,6 +170,33 @@ function mapMessagesToOpenAI(messages: ChatMessage[]): Array<Record<string, unkn
 
 // ─── Handler ──────────────────────────────────────────────────────────────
 
+function responseFunctionItemId(callId: string): string {
+  const suffix = callId.replace(/^call_/, '').replace(/[^a-zA-Z0-9_-]/g, '_')
+  return `fc_${suffix || 'unknown'}`
+}
+
+function responsesFunctionCallItem(
+  toolCall: Extract<ContentBlock, { type: 'tool_use' }>,
+): Record<string, unknown> {
+  const providerItem =
+    toolCall.providerItem?.type === 'function_call' ? toolCall.providerItem : undefined
+
+  return {
+    ...(providerItem ?? {}),
+    id:
+      typeof providerItem?.id === 'string'
+        ? providerItem.id
+        : responseFunctionItemId(toolCall.id),
+    type: 'function_call',
+    call_id: toolCall.id,
+    name: toolCall.name,
+    arguments:
+      typeof toolCall.input === 'string'
+        ? toolCall.input
+        : JSON.stringify(toolCall.input ?? {}),
+  }
+}
+
 export const openaiChatHandler: FormatHandler = {
   buildRequest(params: StreamParams, credential: ProviderCredential | undefined, baseURL: string) {
     const isCodexResponsesEndpoint =
@@ -163,6 +204,9 @@ export const openaiChatHandler: FormatHandler = {
 
     if (isCodexResponsesEndpoint) {
       const input: Array<Record<string, unknown>> = []
+      const knownToolCallIds = new Set<string>()
+      const resolvedToolCallIds = new Set<string>()
+      const replayedProviderItemIds = new Set<string>()
       let instructions = params.systemPrompt ?? ''
 
       for (const m of params.messages) {
@@ -183,6 +227,18 @@ export const openaiChatHandler: FormatHandler = {
             content: typeof m.content === 'string' ? [{ type: 'input_text', text: m.content }] : m.content,
           })
         } else if (m.role === 'assistant') {
+          for (const providerItem of m.providerOutputItems ?? []) {
+            if (providerItem.type === 'reasoning') {
+              const providerItemId =
+                typeof providerItem.id === 'string' ? providerItem.id : undefined
+              if (providerItemId && replayedProviderItemIds.has(providerItemId)) {
+                continue
+              }
+              input.push(providerItem)
+              if (providerItemId) replayedProviderItemIds.add(providerItemId)
+            }
+          }
+
           const contentBlocks = Array.isArray(m.content) ? m.content : []
           const toolCalls = contentBlocks.filter(
             (block): block is Extract<ContentBlock, { type: 'tool_use' }> =>
@@ -190,12 +246,9 @@ export const openaiChatHandler: FormatHandler = {
           )
           if (toolCalls.length > 0) {
             for (const tc of toolCalls) {
-              input.push({
-                type: 'function_call',
-                call_id: tc.id,
-                name: tc.name,
-                arguments: typeof tc.input === 'string' ? tc.input : JSON.stringify(tc.input ?? {}),
-              })
+              if (!tc.id || knownToolCallIds.has(tc.id)) continue
+              input.push(responsesFunctionCallItem(tc))
+              knownToolCallIds.add(tc.id)
             }
           }
           const assistantText =
@@ -212,16 +265,25 @@ export const openaiChatHandler: FormatHandler = {
             input.push({
               type: 'message',
               role: 'assistant',
+              phase: toolCalls.length > 0 ? 'commentary' : 'final_answer',
               content: [{ type: 'output_text', text: assistantText }],
             })
           }
         } else if (m.role === 'tool') {
           const toolCallId = (m as unknown as { toolCallId?: string; id?: string }).toolCallId ?? (m as unknown as { id?: string }).id ?? ''
+          if (
+            !toolCallId ||
+            !knownToolCallIds.has(toolCallId) ||
+            resolvedToolCallIds.has(toolCallId)
+          ) {
+            continue
+          }
           input.push({
             type: 'function_call_output',
             call_id: toolCallId,
             output: typeof m.content === 'string' ? m.content : JSON.stringify(m.content),
           })
+          resolvedToolCallIds.add(toolCallId)
         }
       }
 
@@ -275,6 +337,8 @@ export const openaiChatHandler: FormatHandler = {
       }
     }
 
+    const isDeepSeekV4 = params.model.toLowerCase().includes('deepseek-v4')
+    const isDeepSeek = params.model.toLowerCase().includes('deepseek')
     const isReasoningModel =
       (params.thinking && params.thinking !== 'off') ||
       params.model.includes('gpt-5') ||
@@ -283,17 +347,22 @@ export const openaiChatHandler: FormatHandler = {
 
     const body: Record<string, unknown> = {
       model: params.model,
-      messages: mapMessagesToOpenAI(params.messages),
+      messages: mapMessagesToOpenAI(
+        params.messages,
+        isDeepSeek ? 'reasoning_content' : undefined,
+      ),
       stream: true,
       store: false,
       ...(params.sessionId ? { user: params.sessionId } : {}),
     }
 
-    if (isReasoningModel) {
+    if (isReasoningModel || isDeepSeekV4) {
       if (params.maxTokens) {
         body.max_completion_tokens = params.maxTokens
       }
-      if (params.thinking && params.thinking !== 'off') {
+      if (isDeepSeekV4 && params.thinking === 'off') {
+        body.reasoning_effort = 'none'
+      } else if (params.thinking && params.thinking !== 'off') {
         body.reasoning_effort = params.thinking === 'minimal' ? 'low' : params.thinking
       }
     } else {
@@ -375,7 +444,7 @@ export const openaiChatHandler: FormatHandler = {
       return text
     }
 
-    function processEvent(event: SSEEvent): StreamChunk | null {
+    function processEvent(event: SSEEvent): StreamChunk | StreamChunk[] | null {
       if (event.data === '[DONE]') return null
 
       let parsed: Record<string, unknown>
@@ -426,6 +495,17 @@ export const openaiChatHandler: FormatHandler = {
 
         const delta = toReasoningDelta(eventType, text)
         if (delta) return { type: 'thinking_delta', text: delta }
+        const reasoningItem = parsed['item'] as Record<string, unknown> | undefined
+        if (
+          eventType === 'response.output_item.done' &&
+          reasoningItem?.type === 'reasoning'
+        ) {
+          return {
+            type: 'provider_output_item',
+            provider: 'openai-responses',
+            item: reasoningItem,
+          }
+        }
         return null
       }
 
@@ -441,7 +521,12 @@ export const openaiChatHandler: FormatHandler = {
 
         if (eventType === 'response.output_item.added') {
           toolArgBuffers.set(outputIndex, { id: callId, itemId, name, args: argsStr })
-          return { type: 'tool_use_start', id: callId, name }
+          return {
+            type: 'tool_use_start',
+            id: callId,
+            name,
+            providerItem: item,
+          }
         }
         if (eventType === 'response.output_item.done') {
           const existing = toolArgBuffers.get(outputIndex)
@@ -458,7 +543,13 @@ export const openaiChatHandler: FormatHandler = {
           } catch {
             // keep raw string
           }
-          return { type: 'tool_use_delta', id: callId, name, input: parsedArgs }
+          return {
+            type: 'tool_use_delta',
+            id: callId,
+            name,
+            input: parsedArgs,
+            providerItem: item,
+          }
         }
       }
 
@@ -496,15 +587,19 @@ export const openaiChatHandler: FormatHandler = {
       }
 
       const choice = (parsed['choices'] as Array<Record<string, unknown>>)?.[0]
-      if (!choice) {
-        if (parsed['usage'] && typeof parsed['usage'] === 'object') {
-          const u = parsed['usage'] as Record<string, number>
-          finalUsage = {
-            input: u['prompt_tokens'] ?? 0,
-            output: u['completion_tokens'] ?? 0,
-            cacheRead: u['cached_tokens'],
-          }
+      if (parsed['usage'] && typeof parsed['usage'] === 'object') {
+        const u = parsed['usage'] as Record<string, number>
+        finalUsage = {
+          input: u['prompt_tokens'] ?? 0,
+          output: u['completion_tokens'] ?? 0,
+          cacheRead:
+            u['cached_tokens'] ??
+            (parsed['usage'] as {
+              prompt_tokens_details?: { cached_tokens?: number }
+            }).prompt_tokens_details?.cached_tokens,
         }
+      }
+      if (!choice) {
         return null
       }
 
@@ -515,6 +610,9 @@ export const openaiChatHandler: FormatHandler = {
       const delta = choice['delta'] as
         | {
             content?: string | null
+            reasoning?: string | null
+            reasoning_content?: string | null
+            reasoning_details?: string | null
             tool_calls?: Array<{
               index: number
               id?: string
@@ -525,21 +623,33 @@ export const openaiChatHandler: FormatHandler = {
         | undefined
       if (!delta) return null
 
+      const out: StreamChunk[] = []
+      const reasoningDelta =
+        delta.reasoning_content ?? delta.reasoning ?? delta.reasoning_details
+      if (typeof reasoningDelta === 'string' && reasoningDelta.length > 0) {
+        out.push({ type: 'thinking_delta', text: reasoningDelta })
+      }
+
       // Text content
       if (typeof delta.content === 'string' && delta.content.length > 0) {
-        return { type: 'text_delta', text: delta.content }
+        out.push({ type: 'text_delta', text: delta.content })
       }
 
       // Tool call deltas — OpenAI streams them in pieces, so we accumulate
       if (Array.isArray(delta.tool_calls) && delta.tool_calls.length > 0) {
-        const out: StreamChunk[] = []
         for (const tc of delta.tool_calls) {
           let buf = toolArgBuffers.get(tc.index)
-          if (tc.id && !buf) {
-            // New tool call
-            buf = { id: tc.id, name: tc.function?.name ?? '', args: '' }
+          if (!buf) {
+            buf = {
+              id: tc.id || `call_${tc.index}`,
+              name: tc.function?.name ?? '',
+              args: '',
+            }
             toolArgBuffers.set(tc.index, buf)
             out.push({ type: 'tool_use_start', id: buf.id, name: buf.name })
+          }
+          if (tc.function?.name) {
+            buf.name = tc.function.name
           }
           if (buf && tc.function?.arguments) {
             buf.args += tc.function.arguments
@@ -549,28 +659,27 @@ export const openaiChatHandler: FormatHandler = {
             } catch {
               // partial JSON — emit the raw string so UI can show a streaming shell
             }
-            out.push({ type: 'tool_use_delta', id: buf.id, input: parsedArgs })
+            out.push({
+              type: 'tool_use_delta',
+              id: buf.id,
+              name: buf.name,
+              input: parsedArgs,
+            })
           }
         }
-        // Emit only the first (the rest are extra tool calls in same chunk)
-        return out[0] ?? null
       }
 
-      return null
+      return out.length > 1 ? out : (out[0] ?? null)
     }
 
-    function finalize(): StreamChunk | null {
-      // Close any open tool calls
-      const closeChunk: StreamChunk | null =
-        toolArgBuffers.size > 0
-          ? {
-              type: 'tool_use_end',
-              id: Array.from(toolArgBuffers.values())[toolArgBuffers.size - 1]!.id,
-            }
-          : null
-
-      // message_end is emitted separately after finalize
-      return closeChunk
+    function finalize(): StreamChunk | StreamChunk[] | null {
+      const closeChunks = Array.from(toolArgBuffers.values()).map(
+        (tool): StreamChunk => ({
+          type: 'tool_use_end',
+          id: tool.id,
+        }),
+      )
+      return closeChunks.length > 1 ? closeChunks : (closeChunks[0] ?? null)
     }
 
     function emitMessageEnd(): StreamChunk {

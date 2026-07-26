@@ -35,10 +35,7 @@ import {
   Pencil,
   Settings,
   Trash2,
-  MessageSquare,
   Check,
-  ChevronRight,
-  ChevronDown,
 } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import { tasksStore } from '@/lib/tasks/store'
@@ -57,7 +54,7 @@ const topNav = [
   { title: 'New task', icon: Plus, accent: true },
   { title: 'Search', icon: Search },
   { title: 'Skills', icon: Sparkles },
-  { title: 'Scheduled', icon: Clock },
+  { title: 'Automation', icon: Clock },
   { title: 'Connect Mobile', icon: Smartphone },
   { title: 'Remote Control', icon: Monitor },
 ] as const
@@ -74,6 +71,7 @@ type Agent = (typeof agentTeam)[number]
 export function AppSidebar({
   activeTaskId,
   onNewTask,
+  onOpenSearch,
   onSelectSkills,
   onSelectProject,
   onSelectTask,
@@ -85,6 +83,7 @@ export function AppSidebar({
 }: {
   activeTaskId?: string
   onNewTask: () => void
+  onOpenSearch: () => void
   onSelectSkills?: () => void
   onSelectProject: (projectId: string) => void
   /** Switch to a specific task by id. */
@@ -110,6 +109,7 @@ export function AppSidebar({
           items={topNav}
           onItemClick={(title) => {
             if (title === 'New task') onNewTask()
+            else if (title === 'Search') onOpenSearch()
             else if (title === 'Skills') onSelectSkills?.()
             else console.log('[nav]', title)
           }}
@@ -135,8 +135,8 @@ export function AppSidebar({
             </button>
           </SidebarGroupLabel>
           <SidebarGroupContent>
-            {projects.length === 0 ? (
-              <SidebarMenu>
+            <SidebarMenu>
+              {projects.length === 0 && (
                 <SidebarMenuItem>
                   <SidebarMenuButton
                     size="default"
@@ -147,33 +147,30 @@ export function AppSidebar({
                     <span className="text-[13px]">Add your first project</span>
                   </SidebarMenuButton>
                 </SidebarMenuItem>
-              </SidebarMenu>
-            ) : (
-              <SidebarMenu>
-                {projects.map((p) => (
-                  <ProjectGroup
-                    key={p.id}
-                    projectId={p.id}
-                    label={p.label}
-                    path={p.path}
-                    active={activeProject?.id === p.id}
-                    activeTaskId={activeTaskId}
-                    onNewTaskForProject={() => {
-                      void setActive(p.id)
-                      onSelectProject(p.id)
-                    }}
-                    onRemoveProject={() => void remove(p.id)}
-                    onSelectTask={onSelectTask}
-                  />
-                ))}
-              </SidebarMenu>
-            )}
+              )}
+              {projects.map((p) => (
+                <ProjectGroup
+                  key={p.id}
+                  projectId={p.id}
+                  label={p.label}
+                  path={p.path}
+                  active={activeProject?.id === p.id}
+                  activeTaskId={activeTaskId}
+                  onNewTaskForProject={() => {
+                    void setActive(p.id)
+                    onSelectProject(p.id)
+                  }}
+                  onRemoveProject={() => void remove(p.id)}
+                  onSelectTask={onSelectTask}
+                />
+              ))}
+              <LooseTasksGroup
+                activeTaskId={activeTaskId}
+                onSelectTask={onSelectTask}
+              />
+            </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
-
-        {/* Loose tasks (no project). Same row look but no parent group
-            to nest under. Sits just below the project list. */}
-        <LooseTasksGroup activeTaskId={activeTaskId} onSelectTask={onSelectTask} />
 
         {/* Agent Team */}
         <SidebarGroup>
@@ -254,6 +251,7 @@ function ProjectGroup({
   const [isCollapsed, setIsCollapsed] = useState(false)
   const [menuOpen, setMenuOpen] = useState(false)
   const tasks = useTasksByProject(projectId)
+  const hasActiveTask = tasks.some((task) => task.id === activeTaskId)
 
   return (
     <SidebarMenuItem
@@ -265,25 +263,13 @@ function ProjectGroup({
       <div className="group relative flex w-full items-center">
         <SidebarMenuButton
           size="default"
-          isActive={active}
+          isActive={active && !hasActiveTask}
           className="text-foreground/80 pr-14"
           onClick={() => setIsCollapsed((c) => !c)}
+          title={path}
         >
-          {isCollapsed ? (
-            <ChevronRight className="text-muted-foreground/70 size-3.5 shrink-0" />
-          ) : (
-            <ChevronDown className="text-muted-foreground/70 size-3.5 shrink-0" />
-          )}
-          <Folder className="size-4 shrink-0 text-amber-500/80" />
-          <div className="flex min-w-0 flex-col leading-tight">
-            <span className="truncate text-[13px] font-medium">{label}</span>
-            <span
-              className="text-muted-foreground truncate text-[11px]"
-              title={path}
-            >
-              {path}
-            </span>
-          </div>
+          <Folder className="text-muted-foreground size-4 shrink-0" />
+          <span className="truncate text-[13px] font-medium">{label}</span>
         </SidebarMenuButton>
 
         {/* Action buttons on hover: + (New task) and ⋯ (Options) */}
@@ -422,7 +408,6 @@ function TaskRow({
           className="text-foreground/75 hover:text-foreground data-[active=true]:text-foreground h-7 px-2 text-[12.5px]"
           onClick={onClick}
         >
-          <MessageSquare className="size-3.5 shrink-0 opacity-70" />
           <span className="truncate">{title}</span>
         </SidebarMenuButton>
 
@@ -451,7 +436,7 @@ function TaskRow({
   )
 }
 
-/** Tasks with no project ("loose" conversations). */
+/** Tasks without a project, displayed with the same visual hierarchy. */
 function LooseTasksGroup({
   activeTaskId,
   onSelectTask,
@@ -460,14 +445,24 @@ function LooseTasksGroup({
   onSelectTask: (id: string) => void
 }) {
   const tasks = useTasksByProject(null)
+  const [isCollapsed, setIsCollapsed] = useState(false)
   if (tasks.length === 0) return null
+
   return (
-    <SidebarGroup>
-      <SidebarGroupLabel className="text-muted-foreground/70 px-2 text-[11px] font-normal tracking-wide uppercase">
-        No project
-      </SidebarGroupLabel>
-      <SidebarGroupContent>
-        <SidebarMenu>
+    <SidebarMenuItem>
+      <SidebarMenuButton
+        size="default"
+        className="text-foreground/80"
+        onClick={() => setIsCollapsed((collapsed) => !collapsed)}
+      >
+        <Folder className="text-muted-foreground size-4 shrink-0" />
+        <span className="truncate text-[13px] font-medium">
+          No project selected
+        </span>
+      </SidebarMenuButton>
+
+      {!isCollapsed && (
+        <SidebarMenu className="border-border/40 ml-4 mt-0.5 flex flex-col gap-0.5 border-l pl-2">
           {tasks.map((t) => (
             <TaskRow
               key={t.id}
@@ -478,8 +473,8 @@ function LooseTasksGroup({
             />
           ))}
         </SidebarMenu>
-      </SidebarGroupContent>
-    </SidebarGroup>
+      )}
+    </SidebarMenuItem>
   )
 }
 

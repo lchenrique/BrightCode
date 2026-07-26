@@ -29,6 +29,12 @@ import path from 'node:path'
 import { ipcMain } from 'electron'
 import { IPC } from '../shared/ipc-channels'
 import { getActiveProject } from './projects'
+import {
+  discoverSkills,
+  getSkillSelector,
+  readSkillForAgent,
+  readSkillResourceForAgent,
+} from './skills'
 
 // ── Result envelope ────────────────────────────────────────────────────
 
@@ -36,7 +42,15 @@ export type ToolResult<T = unknown> =
   | { ok: true; result: T }
   | { ok: false; error: string }
 
-export type ToolName = 'read_file' | 'write_file' | 'edit_file' | 'list_files' | 'search_files'
+export type ToolName =
+  | 'read_file'
+  | 'write_file'
+  | 'edit_file'
+  | 'list_files'
+  | 'search_files'
+  | 'list_skills'
+  | 'read_skill'
+  | 'read_skill_file'
 
 export type ToolArgs = {
   read_file: { path: string }
@@ -44,6 +58,9 @@ export type ToolArgs = {
   edit_file: { path: string; oldText: string; newText: string; replaceAll?: boolean }
   list_files: { path?: string; recursive?: boolean }
   search_files: { query: string; path?: string; includePattern?: string }
+  list_skills: { query?: string }
+  read_skill: { skill: string }
+  read_skill_file: { skill: string; path: string }
 }
 
 export type ToolExecuteRequest = {
@@ -54,10 +71,61 @@ export type ToolExecuteRequest = {
 
 export async function executeTool(req: ToolExecuteRequest): Promise<ToolResult> {
   const project = getActiveProject()
+  const { name, args } = req
+
+  try {
+    if (name === 'list_skills') {
+      const query = args.query?.trim().toLocaleLowerCase()
+      const skills = await discoverSkills(project?.path)
+      const filtered = query
+        ? skills.filter((skill) =>
+            [
+              skill.name,
+              skill.description,
+              skill.source,
+              skill.sourceLabel,
+              ...(skill.tags ?? []),
+            ]
+              .join(' ')
+              .toLocaleLowerCase()
+              .includes(query),
+          )
+        : skills
+      return {
+        ok: true,
+        result: filtered.map((skill) => ({
+          selector: getSkillSelector(skill),
+          name: skill.name,
+          description: skill.description,
+          source: skill.source,
+          sourceLabel: skill.sourceLabel,
+          tags: skill.tags,
+        })),
+      }
+    }
+    if (name === 'read_skill') {
+      return {
+        ok: true,
+        result: await readSkillForAgent(args.skill, project?.path),
+      }
+    }
+    if (name === 'read_skill_file') {
+      return {
+        ok: true,
+        result: await readSkillResourceForAgent(
+          args.skill,
+          args.path,
+          project?.path,
+        ),
+      }
+    }
+  } catch (err) {
+    return { ok: false, error: (err as Error).message }
+  }
+
   if (!project) {
     return { ok: false, error: 'No active project — pick one in the sidebar first.' }
   }
-  const { name, args } = req
   try {
     switch (name) {
       case 'read_file':

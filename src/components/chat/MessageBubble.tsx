@@ -6,13 +6,13 @@
  * project view.
  */
 
-import { useState } from 'react'
+import { memo, useState } from 'react'
 import { AlertCircle, ChevronRight, Wrench } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { type Message } from './types'
 import { MarkdownRenderer } from './MarkdownRenderer'
 
-export function MessageBubble({
+function MessageBubbleComponent({
   message,
   compact = false,
 }: {
@@ -113,6 +113,12 @@ export function MessageBubble({
   )
 }
 
+export const MessageBubble = memo(
+  MessageBubbleComponent,
+  (previous, next) =>
+    previous.message === next.message && previous.compact === next.compact,
+)
+
 function ToolCallList({
   toolCalls,
 }: {
@@ -147,6 +153,15 @@ function summarizeArgs(name: string, args: unknown): string {
   }
   if (name === 'search_files') {
     return `"${a.query}" in ${a.path ?? '.'}`
+  }
+  if (name === 'list_skills') {
+    return a.query ? String(a.query) : 'all available skills'
+  }
+  if (name === 'read_skill') {
+    return String(a.skill ?? '')
+  }
+  if (name === 'read_skill_file') {
+    return `${String(a.skill ?? '')} · ${String(a.path ?? '')}`
   }
   return JSON.stringify(args).slice(0, 80)
 }

@@ -19,7 +19,7 @@
  * with a subtle shine animation on the header to signal activity.
  */
 
-import { useEffect, useState } from 'react'
+import { memo, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import {
   ChevronDown,
   Brain,
@@ -29,6 +29,7 @@ import {
 import { cn } from '@/lib/utils'
 import { ToolTimelineItem, type ToolTimelineItem as ToolItem } from './ToolTimeline'
 import type { Message } from './types'
+import { MarkdownRenderer } from './MarkdownRenderer'
 
 /**
  * Phrases the bot cycles through while the turn is still streaming. Order
@@ -46,11 +47,11 @@ import type { Message } from './types'
  * text jump.
  */
 const FILLING_PHRASES = [
-  'Filling in step by step…',
-  'Thinking…',
-  'Reading the files…',
-  'Writing…',
-  'Targeting…',
+  'Analyzing the request…',
+  'Planning the next step…',
+  'Preparing tool calls…',
+  'Checking the project…',
+  'Working step by step…',
   'Almost there…',
 ] as const
 
@@ -66,13 +67,16 @@ export interface AssistantTurnProps {
   streaming?: boolean
 }
 
-export function AssistantTurn({
+function AssistantTurnComponent({
   assistant,
   toolMessages,
   streaming,
 }: AssistantTurnProps) {
-  // Default collapsed, matches MiniMax Code.
+  // Reasoning stays compact by default, including the active turn. Users can
+  // expand it without having every new turn take over the transcript.
   const [open, setOpen] = useState(false)
+  const thinkingScrollRef = useRef<HTMLDivElement>(null)
+  const followThinkingRef = useRef(true)
   // Phrase index for the "Filling in step by step…" footer. Only advances
   // while the turn is streaming; resets to 0 when streaming stops so a
   // re-expanded turn shows the first phrase instead of a random one.
@@ -88,6 +92,12 @@ export function AssistantTurn({
     }, PHRASE_INTERVAL_MS)
     return () => window.clearInterval(id)
   }, [streaming])
+
+  useLayoutEffect(() => {
+    const node = thinkingScrollRef.current
+    if (!node || !open || !streaming || !followThinkingRef.current) return
+    node.scrollTop = node.scrollHeight
+  }, [assistant.thinking, open, streaming])
 
   // Build the timeline from the assistant's `toolCalls` (authoritative)
   // merged with the tool result summaries from `toolMessages`. We index
@@ -113,24 +123,28 @@ export function AssistantTurn({
 
   // Categorize tools for the header counters. The labels match the
   // MiniMax Code phrasing ("Viewed", "Edited", "Ran", "Searched").
-  const viewed = items.filter((i) => i.name === 'read_file').length
-  const edited = items.filter((i) =>
+  const successfulItems = items.filter((item) => !item.errored)
+  const failedCount = items.filter((item) => item.errored).length
+  const viewed = successfulItems.filter((i) => i.name === 'read_file').length
+  const edited = successfulItems.filter((i) =>
     i.name === 'write_file' || i.name === 'edit_file',
   ).length
-  const commandCount = items.filter((i) => i.name === 'bash').length
-  const searched = items.filter((i) => i.name === 'search_files').length
+  const commandCount = successfulItems.filter((i) => i.name === 'bash').length
+  const searched = successfulItems.filter((i) => i.name === 'search_files').length
   const otherCount =
-    items.length - viewed - edited - commandCount - searched
+    successfulItems.length - viewed - edited - commandCount - searched
 
   // The "Thought N time(s)" badge — we count it as 1 per turn that
   // has any tool calls. Empty + still streaming also counts as 1.
   const thoughtCount = assistant.thinking || items.length > 0 || streaming ? 1 : 0
+  const workingPhrase = getWorkingPhrase(items, phraseIndex)
 
   return (
     <div className="flex flex-col gap-1.5">
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
+        aria-expanded={open}
         className={cn(
           'inline-flex items-center gap-1.5 self-start rounded-md px-1 py-0.5 text-[12.5px] font-medium transition-colors',
           'text-muted-foreground hover:text-foreground/90',
@@ -148,12 +162,17 @@ export function AssistantTurn({
               'bg-gradient-to-r from-muted-foreground via-foreground/80 to-muted-foreground bg-[length:200%_100%] bg-clip-text text-transparent animate-[shine_2s_linear_infinite]',
           )}
         >
-          Thought {thoughtCount} time{thoughtCount === 1 ? '' : 's'}
+          {streaming
+            ? 'Thinking…'
+            : `Thought ${thoughtCount} time${thoughtCount === 1 ? '' : 's'}`}
         </span>
         {items.length > 0 && (
           <>
             <span className="text-muted-foreground/60">,</span>
-            <span>Used {items.length} tool{items.length === 1 ? '' : 's'}</span>
+            <span>
+              {streaming ? 'Using' : 'Used'} {items.length} tool
+              {items.length === 1 ? '' : 's'}
+            </span>
           </>
         )}
       </button>
@@ -161,8 +180,16 @@ export function AssistantTurn({
       {open && (
         <div className="border-border/40 bg-card/20 ml-1.5 flex flex-col gap-2 rounded-lg border py-2 pl-4 pr-3">
           {assistant.thinking && (
-            <div className="border-border/30 text-muted-foreground/90 mb-1 max-h-60 overflow-y-auto whitespace-pre-wrap rounded border p-2 text-[12px] font-mono">
-              {assistant.thinking}
+            <div
+              ref={thinkingScrollRef}
+              onScroll={(event) => {
+                const node = event.currentTarget
+                followThinkingRef.current =
+                  node.scrollHeight - node.scrollTop - node.clientHeight < 48
+              }}
+              className="border-border/30 text-muted-foreground/90 mb-1 max-h-60 overflow-y-auto rounded border p-2.5 text-[12.5px]"
+            >
+              <MarkdownRenderer content={assistant.thinking} />
             </div>
           )}
           {items.length === 0 && !assistant.thinking ? (
@@ -184,7 +211,7 @@ export function AssistantTurn({
               + tool execution, not the final text. */}
 
           {streaming && (
-            <WorkingStatus phrase={FILLING_PHRASES[phraseIndex]} />
+            <WorkingStatus phrase={workingPhrase} />
           )}
         </div>
       )}
@@ -194,7 +221,7 @@ export function AssistantTurn({
           introducing a second mascot outside the active turn. */}
       {!open && streaming && (
         <div className="ml-5">
-          <WorkingStatus phrase={FILLING_PHRASES[phraseIndex]} />
+          <WorkingStatus phrase={workingPhrase} />
         </div>
       )}
 
@@ -210,11 +237,44 @@ export function AssistantTurn({
             commandCount={commandCount}
             searched={searched}
             otherCount={otherCount}
+            failedCount={failedCount}
           />
         </div>
       )}
     </div>
   )
+}
+
+function sameMessages(previous: Message[], next: Message[]): boolean {
+  return (
+    previous.length === next.length &&
+    previous.every((message, index) => message === next[index])
+  )
+}
+
+export const AssistantTurn = memo(
+  AssistantTurnComponent,
+  (previous, next) =>
+    previous.assistant === next.assistant &&
+    previous.streaming === next.streaming &&
+    sameMessages(previous.toolMessages, next.toolMessages),
+)
+
+function getWorkingPhrase(items: ToolItem[], phraseIndex: number): string {
+  const activeItems = items.filter((item) => item.pending)
+  const names = new Set(activeItems.map((item) => item.name))
+
+  if (activeItems.length > 1) return `Running ${activeItems.length} tools in parallel…`
+  if (names.has('write_file') || names.has('edit_file')) return 'Writing files…'
+  if (names.has('read_file')) return 'Reading files…'
+  if (names.has('search_files')) return 'Searching the project…'
+  if (names.has('list_skills')) return 'Discovering skills…'
+  if (names.has('read_skill') || names.has('read_skill_file')) {
+    return 'Loading skill instructions…'
+  }
+  if (names.has('bash')) return 'Running commands…'
+
+  return FILLING_PHRASES[phraseIndex] ?? FILLING_PHRASES[0]
 }
 
 function WorkingStatus({ phrase }: { phrase: string }) {
@@ -242,12 +302,14 @@ function SummaryLine({
   commandCount,
   searched,
   otherCount,
+  failedCount,
 }: {
   viewed: number
   edited: number
   commandCount: number
   searched: number
   otherCount: number
+  failedCount: number
 }) {
   const parts: string[] = []
   if (viewed) parts.push(`Viewed ${viewed} file${viewed === 1 ? '' : 's'}`)
@@ -258,5 +320,7 @@ function SummaryLine({
     parts.push(`Searched ${searched} time${searched === 1 ? '' : 's'}`)
   if (otherCount)
     parts.push(`${otherCount} other${otherCount === 1 ? '' : 's'}`)
+  if (failedCount)
+    parts.push(`Failed ${failedCount} tool${failedCount === 1 ? '' : 's'}`)
   return <span>{parts.join(' · ')}</span>
 }
