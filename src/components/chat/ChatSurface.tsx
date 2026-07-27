@@ -1183,6 +1183,7 @@ export function ChatSurface({
             }
 
             let agentOutput = ''
+            let agentThinking = ''
             let agentError = ''
 
             try {
@@ -1197,6 +1198,8 @@ export function ChatSurface({
                   )
                 } else if (progress.type === 'text') {
                   agentOutput += progress.text ?? ''
+                } else if (progress.type === 'thinking') {
+                  agentThinking += progress.thinking ?? ''
                 } else if (progress.type === 'done') {
                   onToolResult?.(
                     { id: tc.id, name: tc.name },
@@ -1209,31 +1212,50 @@ export function ChatSurface({
                 }
               }
             } catch (err) {
-              agentError = err instanceof Error ? err.message : String(err)
-              onToolResult?.(
-                { id: tc.id, name: tc.name },
-                { ok: false, result: null, error: agentError },
-              )
+              // If the user clicked Stop, treat the partial output as a
+              // soft stop rather than an error.
+              const isAbort =
+                (err instanceof DOMException && err.name === 'AbortError') ||
+                (err instanceof Error &&
+                  err.message.toLowerCase().includes('aborted'))
+              if (!isAbort) {
+                agentError = err instanceof Error ? err.message : String(err)
+                onToolResult?.(
+                  { id: tc.id, name: tc.name },
+                  { ok: false, result: null, error: agentError },
+                )
+              }
             }
 
-            const ok = !agentError
+            const stopped = controller.signal.aborted
+            const ok = !agentError && !stopped
             const summary = ok
               ? `Agent ${agent.name} completed — ${agentOutput.length} chars`
-              : agentError
+              : stopped
+                ? `Agent ${agent.name} stopped by user`
+                : agentError
 
             if (!ok) failedTools += 1
 
             const uiMessage: Message = {
               id: toolResultId,
               role: 'tool',
-              content: ok ? agentOutput : `Error: ${agentError}`,
+              content: ok
+                ? agentOutput
+                : stopped
+                  ? agentOutput
+                    ? `${agentOutput}\n\n_Stopped by user._`
+                    : '_Stopped by user before any output was produced._'
+                  : `Error: ${agentError}`,
               toolResolved: true,
               toolResultSummary: summary,
-              toolError: !ok,
+              toolError: !!agentError && !stopped,
+              toolStopped: stopped,
               toolCalls: [{ id: tc.id, name: tc.name, input: tc.input }],
               isAgentResult: true,
               agentName: agent.name,
               agentAvatarSeed: agent.avatarSeed,
+              ...(agentThinking ? { agentThinking } : {}),
             }
 
             return {
@@ -1363,9 +1385,18 @@ export function ChatSurface({
         ])
       }
     } finally {
+      const wasAborted = controller.signal.aborted
       abortRef.current = null
       setIsStreaming(false)
-      setMessages((prev) => prev.map((m) => (m.streaming ? { ...m, streaming: false } : m)))
+      setMessages((prev) =>
+        prev.map((m) => {
+          if (!m.streaming) return m
+          // When the user clicks Stop, mark the turn so the UI can show
+          // a "Stopped" indicator instead of a generic "Thought N times"
+          // and so the partial output is preserved as-is.
+          return wasAborted ? { ...m, streaming: false, stopped: true } : { ...m, streaming: false }
+        }),
+      )
     }
   }
 

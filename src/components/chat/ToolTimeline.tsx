@@ -7,10 +7,13 @@
  * `failed` / `ok` / `n chars` summary on the right.
  */
 
+import { useState } from 'react'
 import {
   BookOpen,
   Bot,
   Brain,
+  ChevronDown,
+  ChevronRight,
   Code,
   FileEdit,
   FileSearch,
@@ -30,6 +33,8 @@ export interface ToolTimelineItem {
   summary?: string
   /** True if the tool call errored. */
   errored?: boolean
+  /** True if the user clicked Stop before the tool finished. */
+  toolStopped?: boolean
   /** True while the tool call is still running (before the result lands). */
   pending?: boolean
   /** True when this item is an agent delegation result. */
@@ -38,48 +43,14 @@ export interface ToolTimelineItem {
   agentName?: string
   /** DiceBear avatar seed of the agent. */
   agentAvatarSeed?: string
+  /** Sub-agent reasoning trace (Anthropic / OpenAI / Gemini thinking). */
+  agentThinking?: string
 }
 
 export function ToolTimelineItem({ item }: { item: ToolTimelineItem }) {
   if (item.isAgentResult) {
     return (
-      <div
-        className={cn(
-          'flex items-center gap-3 py-1.5 text-[13px]',
-          item.errored && 'text-destructive',
-        )}
-      >
-        {item.agentAvatarSeed ? (
-          <AgentAvatar
-            seed={item.agentAvatarSeed}
-            size={16}
-            className="ring-0"
-          />
-        ) : (
-          <Bot className="text-muted-foreground size-4 shrink-0" />
-        )}
-        <span className="text-foreground/80 shrink-0 text-[12.5px] font-medium">
-          {item.agentName ?? item.name}
-        </span>
-        <span className="text-muted-foreground/60 min-w-0 flex-1 truncate text-[12px]">
-          {item.input && typeof item.input === 'object' && 'task' in item.input
-            ? String((item.input as Record<string, unknown>).task ?? '').slice(0, 80)
-            : ''}
-        </span>
-        <span
-          className={cn(
-            'shrink-0 text-[11.5px] tabular-nums',
-            item.errored ? 'text-destructive' : 'text-muted-foreground',
-          )}
-          title={item.errored ? item.summary : undefined}
-        >
-          {item.errored
-            ? truncateSummary(item.summary) || 'failed'
-            : item.pending
-              ? '…'
-              : (item.summary ?? '')}
-        </span>
-      </div>
+      <AgentResultRow item={item} />
     )
   }
 
@@ -123,6 +94,87 @@ function truncateSummary(summary: string | undefined): string {
   // Drop any leading "Error: " prefix — the red color already signals failure.
   const cleaned = summary.replace(/^Error:\s*/i, '')
   return cleaned.length > 60 ? `${cleaned.slice(0, 57)}…` : cleaned
+}
+
+/**
+ * Agent delegation row — agent avatar + name + task summary on the
+ * outer line, with an inline collapsible "Thought" block beneath
+ * when the sub-agent's reasoning trace is available. Mirrors the
+ * AssistantTurn "Thought N time(s)" header so the user can audit why
+ * the sub-agent did what it did.
+ */
+function AgentResultRow({ item }: { item: ToolTimelineItem }) {
+  const [thinkingOpen, setThinkingOpen] = useState(false)
+  return (
+    <div className="py-1.5 text-[13px]">
+      <div
+        className={cn(
+          'flex items-center gap-3',
+          item.errored && 'text-destructive',
+        )}
+      >
+        {item.agentAvatarSeed ? (
+          <AgentAvatar
+            seed={item.agentAvatarSeed}
+            size={16}
+            className="ring-0"
+          />
+        ) : (
+          <Bot className="text-muted-foreground size-4 shrink-0" />
+        )}
+        <span className="text-foreground/80 shrink-0 text-[12.5px] font-medium">
+          {item.agentName ?? item.name}
+        </span>
+        <span className="text-muted-foreground/60 min-w-0 flex-1 truncate text-[12px]">
+          {item.input && typeof item.input === 'object' && 'task' in item.input
+            ? String((item.input as Record<string, unknown>).task ?? '').slice(0, 80)
+            : ''}
+        </span>
+        <span
+          className={cn(
+            'shrink-0 text-[11.5px] tabular-nums',
+            item.errored
+              ? 'text-destructive'
+              : item.toolStopped
+                ? 'text-muted-foreground/80 italic'
+                : 'text-muted-foreground',
+          )}
+          title={item.errored ? item.summary : undefined}
+        >
+          {item.errored
+            ? truncateSummary(item.summary) || 'failed'
+            : item.toolStopped
+              ? 'stopped'
+              : item.pending
+                ? '…'
+                : (item.summary ?? '')}
+        </span>
+      </div>
+      {item.agentThinking && (
+        <div className="ml-1.5 mt-1 flex flex-col gap-1.5">
+          <button
+            type="button"
+            onClick={() => setThinkingOpen((o) => !o)}
+            aria-expanded={thinkingOpen}
+            className="text-muted-foreground hover:text-foreground/90 inline-flex items-center gap-1.5 self-start rounded-md px-1 py-0.5 text-[11.5px] font-medium transition-colors"
+          >
+            {thinkingOpen ? (
+              <ChevronDown className="size-3" />
+            ) : (
+              <ChevronRight className="size-3" />
+            )}
+            <Brain className="size-3" />
+            <span>Thought 1 time</span>
+          </button>
+          {thinkingOpen && (
+            <div className="border-border/30 text-muted-foreground/90 max-h-60 overflow-y-auto rounded border p-2.5 text-[12px] leading-relaxed">
+              {item.agentThinking}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
 }
 
 function getToolIcon(name: string) {

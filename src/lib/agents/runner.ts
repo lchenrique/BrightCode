@@ -31,6 +31,11 @@ export interface AgentProgress {
   toolInput?: unknown
   toolResult?: string
   error?: string
+  /** Optional: the model's own reasoning trace (Anthropic extended thinking,
+   *  OpenAI o-series reasoning, Gemini 2.5 thinking, etc). The orchestrator
+   *  surfaces this in the delegated task's timeline so the user can see why
+   *  the sub-agent made each call. */
+  thinking?: string
 }
 
 interface ToolCall {
@@ -182,6 +187,17 @@ export async function* runAgent(
             agentId: agent.id,
             agentName: agent.name,
             text: chunk.text,
+          }
+        }
+
+        if (chunk.type === 'thinking_delta') {
+          // Surface the sub-agent's reasoning trace so the orchestrator
+          // can render it in the delegated task timeline.
+          yield {
+            type: 'thinking',
+            agentId: agent.id,
+            agentName: agent.name,
+            thinking: chunk.text,
           }
         }
 

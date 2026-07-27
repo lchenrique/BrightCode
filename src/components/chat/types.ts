@@ -43,12 +43,22 @@ export interface Message {
   toolResultSummary?: string
   /** True when the tool call errored (vs a normal return). */
   toolError?: boolean
+  /** True if the user clicked Stop before the tool finished. */
+  toolStopped?: boolean
+  /** True when the assistant turn was cut short by the user. */
+  stopped?: boolean
   /** True when this tool result comes from an agent delegation. */
   isAgentResult?: boolean
   /** The display name of the agent that produced this result. */
   agentName?: string
   /** DiceBear avatar seed of the agent. */
   agentAvatarSeed?: string
+  /**
+   * Sub-agent reasoning trace (Anthropic extended thinking, OpenAI o-series
+   * reasoning, Gemini thinking, …). Captured live from the delegated task
+   * and shown as a collapsible "Thought" block in the timeline.
+   */
+  agentThinking?: string
 }
 
 /**

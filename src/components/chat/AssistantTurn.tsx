@@ -116,11 +116,13 @@ function AssistantTurnComponent({
       input: tc.input,
       summary: result?.toolResultSummary,
       errored: result?.toolError,
+      toolStopped: result?.toolStopped,
       // Pending = no result yet AND we're still streaming.
       pending: streaming && !result,
       isAgentResult: result?.isAgentResult,
       agentName: result?.agentName,
       agentAvatarSeed: result?.agentAvatarSeed,
+      agentThinking: result?.agentThinking,
     }
   })
 
@@ -152,6 +154,7 @@ function AssistantTurnComponent({
 
   // The "Thought N time(s)" badge — we count it as 1 per turn that
   // has any tool calls. Empty + still streaming also counts as 1.
+  // A user-stopped turn gets a distinct "Stopped" badge.
   const thoughtCount = assistant.thinking || items.length > 0 || streaming ? 1 : 0
   const workingPhrase = getWorkingPhrase(items, phraseIndex)
 
@@ -176,11 +179,14 @@ function AssistantTurnComponent({
             'transition-colors',
             streaming &&
               'bg-gradient-to-r from-muted-foreground via-foreground/80 to-muted-foreground bg-[length:200%_100%] bg-clip-text text-transparent animate-[shine_2s_linear_infinite]',
+            assistant.stopped && 'text-muted-foreground/80',
           )}
         >
           {streaming
             ? 'Thinking…'
-            : `Thought ${thoughtCount} time${thoughtCount === 1 ? '' : 's'}`}
+            : assistant.stopped
+              ? 'Stopped by user'
+              : `Thought ${thoughtCount} time${thoughtCount === 1 ? '' : 's'}`}
         </span>
         {items.length > 0 && (
           <>
