@@ -49,7 +49,9 @@ import {
 import { useActiveProject } from '@/hooks/use-projects'
 import { useTask, useTasksActions } from '@/hooks/use-tasks'
 import { buildSystemPrompt } from '@/lib/agents/system-prompt'
-import { AGENT_TOOLS } from '@/lib/agents/tools'
+import { getAllTools } from '@/lib/agents/tools'
+import { agentStore } from '@/lib/agents'
+import { runAgent, type AgentTask } from '@/lib/agents/runner'
 import {
   readLastSelectedModel,
   saveLastSelectedModel,
@@ -341,6 +343,10 @@ export interface ChatSurfaceProps {
   project?: Project | null
   /** Override the model picker (e.g. pin a specific model). */
   selectedModelOverride?: string
+  /** Override the entire system prompt (e.g. agent persona). */
+  systemPromptOverride?: string
+  /** Restrict available tools to this subset (by name). */
+  toolFilter?: string[]
   /**
    * Fired once per tool_use_start. Used by the project view to track
    * which files were edited for the "Edited N files" card.
@@ -355,14 +361,17 @@ export interface ChatSurfaceProps {
     outcome: { ok: boolean; result?: unknown; error?: string },
   ) => void
   /**
-   * If set on mount, the chat auto-sends this message exactly once.
-   * Used by TaskView to "carry over" the first message the user typed
-   * in the welcome screen — without it, the user would have to retype
-   * the same message in the task view. A ref guard prevents the auto-
-   * send from re-firing if `initialMessage` reference changes during
-   * re-renders.
+   * If set on mount, the chat auto-sends this payload (text + images)
+   * exactly once. Used by TaskView to "carry over" the first message
+   * the user typed in the welcome screen — without it, the user would
+   * have to retype the same message in the task view. A ref guard
+   * prevents the auto-send from re-firing if `initialMessage` reference
+   * changes during re-renders.
    */
-  initialMessage?: string | null
+  initialMessage?: {
+    text: string
+    images: Array<{ id: string; data: string; mediaType: string; name: string; size: number }>
+  } | null
   /**
    * Fired once after the initial auto-send completes. Lets the parent
    * clear the pending message from the store / state.
@@ -374,6 +383,8 @@ export function ChatSurface({
   taskId,
   project,
   selectedModelOverride,
+  systemPromptOverride,
+  toolFilter,
   onToolCall,
   onToolResult,
   initialMessage,
@@ -388,6 +399,7 @@ export function ChatSurface({
   const [selectedModel, setSelectedModel] = useState<string>(
     readLastSelectedModel,
   )
+  const [selectedAccountId, setSelectedAccountId] = useState<string>()
   const [isModelSelectionLoaded, setIsModelSelectionLoaded] = useState(
     !taskId,
   )
@@ -395,6 +407,8 @@ export function ChatSurface({
   const [authMode, setAuthMode] = useState<'full' | 'read'>('full')
   const [messages, setMessages] = useState<Message[]>([])
   const [isStreaming, setIsStreaming] = useState(false)
+  const [queuedMessage, setQueuedMessage] = useState<string | null>(null)
+  const abortRef = useRef<AbortController | null>(null)
   const [contextStatus, setContextStatus] =
     useState<ContextWindowStatus | null>(null)
   // The project is read fresh from the sidebar on each submit; we also
@@ -442,6 +456,7 @@ export function ChatSurface({
     }
 
     setSelectedModel(task.selectedModel || readLastSelectedModel())
+    setSelectedAccountId(task.selectedAccountId)
     setIsModelSelectionLoaded(true)
   }, [selectedModelOverride, task, taskId])
 
@@ -620,6 +635,21 @@ export function ChatSurface({
     [taskId, updateTask],
   )
 
+  const handleAccountChange = useCallback(
+    (accountId: string | undefined) => {
+      setSelectedAccountId(accountId)
+      if (taskId) {
+        updateTask(taskId, { selectedAccountId: accountId })
+      }
+    },
+    [taskId, updateTask],
+  )
+
+  const handleStop = useCallback(() => {
+    abortRef.current?.abort()
+    abortRef.current = null
+  }, [])
+
   const hasAnyModel = available.length > 0
   const selectedModelInfo = useMemo(
     () =>
@@ -720,7 +750,42 @@ export function ChatSurface({
     initialSentRef.current = true
     onInitialMessageSent?.()
     void handleSubmit(initialMessage)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isLoaded, initialMessage, selectedModel, messages.length, isStreaming])
+
+  useEffect(() => {
+    if (!isStreaming && queuedMessage) {
+      const msg = queuedMessage
+      setQueuedMessage(null)
+      void handleSubmit({ text: msg, images: [] })
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isStreaming, queuedMessage])
+
+  /**
+   * Defensive dedupe for the final toolCalls buffer. Some gateways can
+   * emit two `tool_use_start` / `tool_use_delta` chunks for the same
+   * id; without dedupe, the timeline's `key={tc.id}` would fire a
+   * React "duplicate key" warning. First-write-wins so we keep any
+   * partial input the earlier event had already accumulated.
+   */
+  function dedupeToolCalls(
+    calls: Array<{
+      id: string
+      name: string
+      input: unknown
+      providerItem?: Record<string, unknown>
+    }>,
+  ): typeof calls {
+    const seen = new Set<string>()
+    const out: typeof calls = []
+    for (const tc of calls) {
+      if (seen.has(tc.id)) continue
+      seen.add(tc.id)
+      out.push(tc)
+    }
+    return out
+  }
 
   const applyChunk = (
     id: string,
@@ -805,8 +870,17 @@ export function ChatSurface({
     }
   }
 
-  const handleSubmit = async (text: string) => {
-    if (isStreaming) return
+  const handleSubmit = async (
+    payload: { text: string; images: import('@/components/home/ChatInput').AttachedImage[] },
+  ) => {
+    const text = payload.text.trim()
+    if (!text && payload.images.length === 0) return
+    if (isStreaming) {
+      // Only queue the text — images don't survive across stream
+      // boundaries (they belong with the user turn that introduced them).
+      setQueuedMessage(text)
+      return
+    }
     if (!selectedModel) return
 
     saveLastSelectedModel(selectedModel)
@@ -814,10 +888,30 @@ export function ChatSurface({
       updateTask(taskId, { selectedModel })
     }
 
+    const controller = new AbortController()
+    abortRef.current = controller
+
+    // Build the content blocks (text + images). When the user attached
+    // images, we set `contentBlocks` on the message — `toChatMessage`
+    // will replay the full array to the model. `content` still holds
+    // the plain text for the UI transcript.
+    const contentBlocks: import('@/lib/providers').ContentBlock[] | undefined =
+      payload.images.length > 0
+        ? [
+            ...(text ? [{ type: 'text' as const, text }] : []),
+            ...payload.images.map((img) => ({
+              type: 'image' as const,
+              data: img.data,
+              mediaType: img.mediaType,
+            })),
+          ]
+        : undefined
+
     const userMsg: Message = {
       id: crypto.randomUUID(),
       role: 'user',
       content: text,
+      ...(contentBlocks ? { contentBlocks } : {}),
     }
 
     const baseMessages = [...messagesRef.current, userMsg]
@@ -872,10 +966,12 @@ export function ChatSurface({
           error instanceof Error ? error.message : String(error),
         ])
       }
-      const baseSystemPrompt = buildSystemPrompt({
-        project: effectiveProject,
-        skills: skillCatalog,
-      })
+      const baseSystemPrompt = systemPromptOverride
+        ? systemPromptOverride
+        : buildSystemPrompt({
+            project: effectiveProject,
+            skills: skillCatalog,
+          })
       const systemPrompt = preparedContext.compaction
         ? `${baseSystemPrompt}\n\n${preparedContext.compaction.summary}`
         : baseSystemPrompt
@@ -907,11 +1003,14 @@ export function ChatSurface({
           model: selectedModel,
           messages: convo,
           systemPrompt,
-          tools: AGENT_TOOLS,
+          tools: toolFilter
+            ? getAllTools().filter((t) => toolFilter.includes(t.name))
+            : getAllTools(),
           thinking: requestThinkingLevel,
           maxTokens: 4096,
           temperature: 0.7,
-        })) {
+          signal: controller.signal,
+        }, selectedAccountId)) {
           if (chunk.type === 'error') {
             throw chunk.error
           }
@@ -1018,7 +1117,13 @@ export function ChatSurface({
             m.id === assistantId
               ? {
                   ...m,
-                  toolCalls,
+                  // Defensive dedupe: a buggy provider could send two
+                  // tool_use_start / tool_use_delta events with the same
+                  // id, which would surface as a React "duplicate key"
+                  // warning on the timeline. Keep the FIRST occurrence
+                  // so we preserve any partial input the first event had
+                  // already accumulated.
+                  toolCalls: dedupeToolCalls(toolCalls),
                   providerOutputItems,
                   streaming: false,
                   model: assistantModel || m.model,
@@ -1029,29 +1134,151 @@ export function ChatSurface({
 
         const toolResults = await Promise.all(toolCalls.map(async (tc) => {
           const toolResultId = crypto.randomUUID()
+
+          const isAgentDelegation = tc.name.startsWith('delegate_to_')
+
+          if (isAgentDelegation) {
+            const agents = agentStore.list()
+            const agent = agents.find(
+              (a) =>
+                `delegate_to_${a.name.toLowerCase().replace(/\s+/g, '_')}` ===
+                tc.name,
+            )
+
+            if (!agent) {
+              const errorMsg = `Agent "${tc.name}" not found. Create it in Agent Teams first.`
+              failedTools += 1
+              onToolResult?.(
+                { id: tc.id, name: tc.name },
+                { ok: false, result: null, error: errorMsg },
+              )
+
+              const uiMessage: Message = {
+                id: toolResultId,
+                role: 'tool',
+                content: `Error: ${errorMsg}`,
+                toolResolved: true,
+                toolResultSummary: errorMsg,
+                toolError: true,
+                toolCalls: [{ id: tc.id, name: tc.name, input: tc.input }],
+              }
+              return {
+                uiMessage,
+                wireMessage: {
+                  role: 'tool' as const,
+                  toolCallId: tc.id,
+                  toolName: tc.name,
+                  content: `Error: ${errorMsg}`,
+                },
+              }
+            }
+
+            const taskInput = tc.input as
+              | { task?: string; context?: string }
+              | undefined
+            const task: AgentTask = {
+              agentId: agent.id,
+              task: taskInput?.task ?? 'No task specified',
+              context: taskInput?.context,
+            }
+
+            let agentOutput = ''
+            let agentError = ''
+
+            try {
+              for await (const progress of runAgent(task, {
+                signal: controller.signal,
+              })) {
+                if (progress.type === 'error') {
+                  agentError = progress.error ?? 'Agent error'
+                  onToolResult?.(
+                    { id: tc.id, name: tc.name },
+                    { ok: false, result: null, error: agentError },
+                  )
+                } else if (progress.type === 'text') {
+                  agentOutput += progress.text ?? ''
+                } else if (progress.type === 'done') {
+                  onToolResult?.(
+                    { id: tc.id, name: tc.name },
+                    {
+                      ok: progress.type === 'done',
+                      result: agentOutput,
+                      error: agentError || undefined,
+                    },
+                  )
+                }
+              }
+            } catch (err) {
+              agentError = err instanceof Error ? err.message : String(err)
+              onToolResult?.(
+                { id: tc.id, name: tc.name },
+                { ok: false, result: null, error: agentError },
+              )
+            }
+
+            const ok = !agentError
+            const summary = ok
+              ? `Agent ${agent.name} completed — ${agentOutput.length} chars`
+              : agentError
+
+            if (!ok) failedTools += 1
+
+            const uiMessage: Message = {
+              id: toolResultId,
+              role: 'tool',
+              content: ok ? agentOutput : `Error: ${agentError}`,
+              toolResolved: true,
+              toolResultSummary: summary,
+              toolError: !ok,
+              toolCalls: [{ id: tc.id, name: tc.name, input: tc.input }],
+              isAgentResult: true,
+              agentName: agent.name,
+              agentEmoji: agent.emoji,
+            }
+
+            return {
+              uiMessage,
+              wireMessage: {
+                role: 'tool' as const,
+                toolCallId: tc.id,
+                toolName: tc.name,
+                content: ok ? agentOutput : `Error: ${agentError}`,
+              },
+            }
+          }
+
           const exec = await window.electronAPI?.tools.execute(
             tc.name as Parameters<
               NonNullable<typeof window.electronAPI>['tools']['execute']
             >[0],
             tc.input as never,
           )
-          const ok = exec?.ok === true
-          const result = ok ? exec.result : null
+          const execOk = exec?.ok === true
+          const result = execOk ? exec.result : null
           const error =
-            !ok && exec && exec.ok === false ? exec.error : 'unknown error'
-          const summary = ok ? summarizeToolResult(tc.name, result) : (error ?? 'error')
+            !execOk && exec && exec.ok === false ? exec.error : 'unknown error'
+          const summary = execOk
+            ? summarizeToolResult(tc.name, result)
+            : (error ?? 'error')
           const changedPath = toolInputPath(tc.input)
 
-          if (ok && changedPath && (tc.name === 'write_file' || tc.name === 'edit_file')) {
+          if (
+            execOk &&
+            changedPath &&
+            (tc.name === 'write_file' || tc.name === 'edit_file')
+          ) {
             changedPaths.push(changedPath)
           }
-          if (!ok) {
+          if (!execOk) {
             failedTools += 1
           }
 
-          onToolResult?.({ id: tc.id, name: tc.name }, { ok, result, error })
+          onToolResult?.(
+            { id: tc.id, name: tc.name },
+            { ok: execOk, result, error },
+          )
           if (
-            ok &&
+            execOk &&
             project &&
             (tc.name === 'write_file' || tc.name === 'edit_file')
           ) {
@@ -1061,10 +1288,12 @@ export function ChatSurface({
           const uiMessage: Message = {
             id: toolResultId,
             role: 'tool',
-            content: ok ? serializeToolResult(result) : `Error: ${error}`,
+            content: execOk
+              ? serializeToolResult(result)
+              : `Error: ${error}`,
             toolResolved: true,
             toolResultSummary: summary,
-            toolError: !ok,
+            toolError: !execOk,
             toolCalls: [{ id: tc.id, name: tc.name, input: tc.input }],
           }
 
@@ -1074,7 +1303,9 @@ export function ChatSurface({
               role: 'tool',
               toolCallId: tc.id,
               toolName: tc.name,
-              content: ok ? serializeToolResult(result) : `Error: ${error}`,
+              content: execOk
+                ? serializeToolResult(result)
+                : `Error: ${error}`,
             } satisfies ChatMessage,
           }
         }))
@@ -1100,32 +1331,39 @@ export function ChatSurface({
       }
     } catch (err) {
       flushStreamingMessagePatches()
-      const detail = {
-        model: selectedModel,
-        message: err instanceof Error ? err.message : String(err),
-        stack: err instanceof Error ? err.stack : undefined,
-        cause: err instanceof Error ? (err as Error & { cause?: unknown }).cause : undefined,
+      const isAbort =
+        (err instanceof DOMException && err.name === 'AbortError') ||
+        (err instanceof Error &&
+          err.message.toLowerCase().includes('aborted'))
+      if (!isAbort) {
+        const detail = {
+          model: selectedModel,
+          message: err instanceof Error ? err.message : String(err),
+          stack: err instanceof Error ? err.stack : undefined,
+          cause: err instanceof Error ? (err as Error & { cause?: unknown }).cause : undefined,
+        }
+        console.error('[chat] stream failed', detail)
+        window.electronAPI?.log('error', ['[chat] stream failed', detail])
+        setMessages((prev) => [
+          ...prev.filter(
+            (message) =>
+              !(
+                message.streaming &&
+                message.role === 'assistant' &&
+                !message.content.trim() &&
+                (message.toolCalls?.length ?? 0) === 0
+              ),
+          ),
+          {
+            id: crypto.randomUUID(),
+            role: 'error',
+            content: `Error: ${err instanceof Error ? err.message : String(err)}`,
+            errorDetails: formatErrorDetails(err),
+          },
+        ])
       }
-      console.error('[chat] stream failed', detail)
-      window.electronAPI?.log('error', ['[chat] stream failed', detail])
-      setMessages((prev) => [
-        ...prev.filter(
-          (message) =>
-            !(
-              message.streaming &&
-              message.role === 'assistant' &&
-              !message.content.trim() &&
-              (message.toolCalls?.length ?? 0) === 0
-            ),
-        ),
-        {
-          id: crypto.randomUUID(),
-          role: 'error',
-          content: `Error: ${err instanceof Error ? err.message : String(err)}`,
-          errorDetails: formatErrorDetails(err),
-        },
-      ])
     } finally {
+      abortRef.current = null
       setIsStreaming(false)
       setMessages((prev) => prev.map((m) => (m.streaming ? { ...m, streaming: false } : m)))
     }
@@ -1163,7 +1401,9 @@ export function ChatSurface({
         <div className="mx-auto max-w-3xl">
           <ChatInput
             onSend={handleSubmit}
-            disabled={isStreaming || !hasAnyModel}
+            disabled={!hasAnyModel}
+            isStreaming={isStreaming}
+            onStop={handleStop}
             thinking={thinking}
             onThinkingChange={setThinking}
             authMode={authMode}
@@ -1171,7 +1411,10 @@ export function ChatSurface({
             modelGroups={modelGroups}
             selectedModel={selectedModel}
             onModelChange={handleModelChange}
+            selectedAccountId={selectedAccountId}
+            onAccountChange={handleAccountChange}
             emptyModelMessage="No models — open Settings"
+            supportsImages={selectedModelInfo?.supportsImages !== false}
           />
         </div>
       </div>

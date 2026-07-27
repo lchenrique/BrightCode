@@ -15,6 +15,7 @@ import { IPC } from '../shared/ipc-channels'
 // `src/lib/providers/auth/store`. We accept `any` here to avoid a circular
 // import across the process boundary.
 type CredentialInput = any
+type AccountInput = any
 
 const auth = {
   get(providerId: string): Promise<CredentialInput | null> {
@@ -52,6 +53,8 @@ interface CLIDetection {
   accessToken: string
   refreshToken?: string
   expiresAt?: number
+  projectId?: string
+  accountId?: string
 }
 
 const cli = {
@@ -122,6 +125,7 @@ interface TaskItem {
   projectId: string | null
   title: string
   selectedModel?: string
+  selectedAccountId?: string
   createdAt: number
   updatedAt: number
 }
@@ -135,6 +139,7 @@ const tasks = {
     projectId: string | null
     title: string
     selectedModel?: string
+    selectedAccountId?: string
     createdAt?: number
     updatedAt?: number
   }): Promise<TaskItem> {
@@ -145,7 +150,7 @@ const tasks = {
   },
   update(
     id: string,
-    patch: Partial<Pick<TaskItem, 'title' | 'projectId' | 'selectedModel'>>,
+    patch: Partial<Pick<TaskItem, 'title' | 'projectId' | 'selectedModel' | 'selectedAccountId'>>,
   ): Promise<void> {
     return ipcRenderer.invoke(IPC.TASKS_UPDATE, id, patch)
   },
@@ -162,6 +167,154 @@ const tasks = {
   },
 }
 
+// ── Multi-account ─────────────────────────────────────────────────────
+
+const accounts = {
+  list(providerId: string): Promise<AccountInput[]> {
+    return ipcRenderer.invoke(IPC.ACCOUNTS_LIST, providerId)
+  },
+  listAll(): Promise<Record<string, Record<string, AccountInput>>> {
+    return ipcRenderer.invoke(IPC.ACCOUNTS_LIST_ALL)
+  },
+  get(providerId: string, accountId: string): Promise<AccountInput | null> {
+    return ipcRenderer.invoke(IPC.ACCOUNTS_GET, providerId, accountId)
+  },
+  add(providerId: string, account: AccountInput): Promise<void> {
+    return ipcRenderer.invoke(IPC.ACCOUNTS_ADD, providerId, account)
+  },
+  update(providerId: string, accountId: string, patch: Record<string, unknown>): Promise<void> {
+    return ipcRenderer.invoke(IPC.ACCOUNTS_UPDATE, providerId, accountId, patch)
+  },
+  remove(providerId: string, accountId: string): Promise<void> {
+    return ipcRenderer.invoke(IPC.ACCOUNTS_REMOVE, providerId, accountId)
+  },
+  setActive(providerId: string, accountId: string): Promise<void> {
+    return ipcRenderer.invoke(IPC.ACCOUNTS_SET_ACTIVE, providerId, accountId)
+  },
+  getActive(providerId: string): Promise<AccountInput | null> {
+    return ipcRenderer.invoke(IPC.ACCOUNTS_GET_ACTIVE, providerId)
+  },
+  listActive(): Promise<Record<string, string>> {
+    return ipcRenderer.invoke(IPC.ACCOUNTS_LIST_ACTIVE)
+  },
+  onChanged(handler: () => void): () => void {
+    const wrapped = () => handler()
+    ipcRenderer.on(IPC.ACCOUNTS_CHANGED, wrapped)
+    return () => ipcRenderer.off(IPC.ACCOUNTS_CHANGED, wrapped)
+  },
+}
+
+// ── Agent teams ───────────────────────────────────────────────────────
+
+const agents = {
+  list(): Promise<any[]> {
+    return ipcRenderer.invoke(IPC.AGENTS_LIST)
+  },
+  get(id: string): Promise<any | null> {
+    return ipcRenderer.invoke(IPC.AGENTS_GET, id)
+  },
+  add(agent: any): Promise<any> {
+    return ipcRenderer.invoke(IPC.AGENTS_ADD, agent)
+  },
+  update(id: string, patch: Record<string, unknown>): Promise<void> {
+    return ipcRenderer.invoke(IPC.AGENTS_UPDATE, id, patch)
+  },
+  remove(id: string): Promise<void> {
+    return ipcRenderer.invoke(IPC.AGENTS_REMOVE, id)
+  },
+  onChanged(handler: () => void): () => void {
+    const wrapped = () => handler()
+    ipcRenderer.on(IPC.AGENTS_CHANGED, wrapped)
+    return () => ipcRenderer.off(IPC.AGENTS_CHANGED, wrapped)
+  },
+}
+
+// ── Usage tracking ────────────────────────────────────────────────────
+
+interface UsageRecordInput {
+  id: string
+  providerId: string
+  accountId: string
+  model: string
+  inputTokens: number
+  outputTokens: number
+  cacheRead?: number
+  cacheWrite?: number
+  estimatedCost?: number
+  timestamp: number
+  source: 'provider' | 'cli' | '9router' | 'estimated'
+}
+
+interface QuotaSnapshotInput {
+  providerId: string
+  accountId: string
+  quotaRemaining?: number
+  quotaLimit?: number
+  quotaResetAt?: number
+  rateLimitRemaining?: number
+  rateLimitResetAt?: number
+  source: 'provider' | 'cli' | '9router' | 'unavailable'
+  collectedAt: number
+}
+
+interface UsageSummaryInput {
+  providerId: string
+  accountId: string
+  model: string
+  totalInputTokens: number
+  totalOutputTokens: number
+  totalRequests: number
+  totalCacheRead?: number
+  totalCacheWrite?: number
+  estimatedCost: number
+  lastUsedAt: number
+  quota?: QuotaSnapshotInput
+}
+
+const usage = {
+  record(record: UsageRecordInput): Promise<void> {
+    return ipcRenderer.invoke(IPC.USAGE_RECORD, record)
+  },
+  getHistory(providerId: string, accountId?: string, since?: number): Promise<UsageRecordInput[]> {
+    return ipcRenderer.invoke(IPC.USAGE_GET_HISTORY, providerId, accountId, since)
+  },
+  getAllHistory(): Promise<Record<string, Record<string, UsageRecordInput[]>>> {
+    return ipcRenderer.invoke(IPC.USAGE_GET_ALL_HISTORY)
+  },
+  getSummaries(): Promise<UsageSummaryInput[]> {
+    return ipcRenderer.invoke(IPC.USAGE_GET_SUMMARIES)
+  },
+  setQuota(providerId: string, accountId: string, quota: QuotaSnapshotInput): Promise<void> {
+    return ipcRenderer.invoke(IPC.USAGE_SET_QUOTA, providerId, accountId, quota)
+  },
+  getQuota(providerId: string, accountId: string): Promise<QuotaSnapshotInput | undefined> {
+    return ipcRenderer.invoke(IPC.USAGE_GET_QUOTA, providerId, accountId)
+  },
+  fetchQuota(
+    url: string,
+    init: { method?: string; headers?: Record<string, string>; body?: string },
+  ): Promise<{ ok: boolean; status: number; data: unknown } | null> {
+    return ipcRenderer.invoke(IPC.USAGE_FETCH_QUOTA, url, init)
+  },
+  getAllQuotas(): Promise<Record<string, Record<string, QuotaSnapshotInput>>> {
+    return ipcRenderer.invoke(IPC.USAGE_GET_ALL_QUOTAS)
+  },
+  fetchCodex(accessToken: string, accountId?: string): Promise<{ ok: boolean; status: number; data: unknown }> {
+    return ipcRenderer.invoke(IPC.USAGE_FETCH_CODEX, accessToken, accountId)
+  },
+  readCodexLocal(): Promise<{ ok: boolean; data: unknown }> {
+    return ipcRenderer.invoke(IPC.USAGE_READ_CODEX_LOCAL)
+  },
+  clear(): Promise<void> {
+    return ipcRenderer.invoke(IPC.USAGE_CLEAR)
+  },
+  onChanged(handler: () => void): () => void {
+    const wrapped = () => handler()
+    ipcRenderer.on(IPC.USAGE_CHANGED, wrapped)
+    return () => ipcRenderer.off(IPC.USAGE_CHANGED, wrapped)
+  },
+}
+
 // ── OAuth ──────────────────────────────────────────────────────────────
 
 interface OAuthConfigInput {
@@ -173,6 +326,9 @@ interface OAuthConfigInput {
   codeChallengeMethod?: 'S256' | 'plain'
   contentType?: 'application/x-www-form-urlencoded' | 'application/json'
   extraAuthParams?: Record<string, string>
+  fixedPort?: number
+  callbackPath?: string
+  callbackHost?: string
 }
 
 interface OAuthResultOutput {
@@ -181,6 +337,8 @@ interface OAuthResultOutput {
   refreshToken?: string
   expiresAt?: number
   email?: string
+  accountId?: string
+  idToken?: string
   error?: string
 }
 
@@ -267,6 +425,7 @@ type ToolName =
   | 'list_skills'
   | 'read_skill'
   | 'read_skill_file'
+  | 'bash'
 
 type ToolArgs = {
   read_file: { path: string }
@@ -277,6 +436,7 @@ type ToolArgs = {
   list_skills: { query?: string }
   read_skill: { skill: string }
   read_skill_file: { skill: string; path: string }
+  bash: { command: string; cwd?: string; timeoutMs?: number }
 }
 
 type ToolExecuteRequest = {
@@ -285,6 +445,13 @@ type ToolExecuteRequest = {
 
 type ToolResult<T = unknown> = { ok: true; result: T } | { ok: false; error: string }
 
+interface BashApprovalRequest {
+  approvalId: string
+  command: string
+  workdir: string
+  timeoutMs: number
+}
+
 const tools = {
   async execute<K extends ToolName>(
     name: K,
@@ -292,6 +459,23 @@ const tools = {
   ): Promise<ToolResult> {
     const req: ToolExecuteRequest = { name, args } as ToolExecuteRequest
     return ipcRenderer.invoke(IPC.TOOL_EXECUTE, req)
+  },
+  /**
+   * Subscribe to bash-tool approval requests from the main process.
+   * The handler receives `{ approvalId, command, workdir, timeoutMs }`
+   * and should call `respondToBashApproval(approvalId, approved)`
+   * to unblock the tool call.
+   */
+  onBashApprovalRequest(
+    handler: (req: BashApprovalRequest) => void,
+  ): () => void {
+    const wrapped = (_event: unknown, payload: BashApprovalRequest) =>
+      handler(payload)
+    ipcRenderer.on(IPC.TOOL_BASH_APPROVAL_REQUEST, wrapped)
+    return () => ipcRenderer.off(IPC.TOOL_BASH_APPROVAL_REQUEST, wrapped)
+  },
+  respondToBashApproval(approvalId: string, approved: boolean): void {
+    ipcRenderer.send(IPC.TOOL_BASH_APPROVAL_RESPOND, { approvalId, approved })
   },
 }
 
@@ -514,9 +698,12 @@ const electronAPI = {
     node: process.versions.node,
   },
   auth,
+  accounts,
+  agents,
   cli,
   projects,
   tasks,
+  usage,
   oauth,
   fs,
   workspace,
@@ -549,6 +736,7 @@ export type {
   ToolArgs,
   ToolExecuteRequest,
   ToolResult,
+  BashApprovalRequest,
   DiscoveredSkill,
   TerminalCreateResult,
   TerminalDataEvent,

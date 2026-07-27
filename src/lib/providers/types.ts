@@ -23,6 +23,7 @@ export type CLISource =
   | 'antigravity-keyring'
   | 'antigravity-auth.json'
 
+/** @deprecated Use ProviderAccount instead. */
 export interface ProviderCredential {
   /** How the credential was obtained — controls how the registry uses it. */
   method: AuthMethod
@@ -41,6 +42,41 @@ export interface ProviderCredential {
   cliSource?: CLISource
   /** Email/account associated with the detected CLI login — for display. */
   cliEmail?: string
+  /** Provider-specific non-secret values (for example a Cloud Code project id). */
+  metadata?: Record<string, unknown>
+}
+
+// ─── Multi-account ─────────────────────────────────────────────────────────
+
+export interface ProviderAccount {
+  id: string
+  providerId: string
+  label: string
+  email?: string
+  authMethod: AuthMethod
+  apiKey?: string
+  accessToken?: string
+  refreshToken?: string
+  expiresAt?: number
+  cliSource?: CLISource
+  cliEmail?: string
+  /** Provider-specific non-secret values (never use this for tokens). */
+  metadata?: Record<string, unknown>
+  enabled: boolean
+  lastUsedAt?: number
+  createdAt: number
+}
+
+export interface ProviderState {
+  providerId: string
+  activeAccountId?: string
+  strategy: 'manual' | 'failover' | 'round_robin'
+}
+
+export interface SessionProvider {
+  providerId: string
+  accountId?: string
+  modelId: string
 }
 
 // ─── Models ────────────────────────────────────────────────────────────────

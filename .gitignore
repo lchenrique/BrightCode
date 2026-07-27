@@ -14,6 +14,9 @@ out
 release
 *.local
 
+# Local user-data cache (skills, projects, tasks live in here at runtime)
+.bright/
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

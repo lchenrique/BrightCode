@@ -1,4 +1,4 @@
-import { useState } from 'react'
+﻿import { useState, useCallback, useRef, useSyncExternalStore } from 'react'
 import {
   Sidebar,
   SidebarContent,
@@ -49,6 +49,7 @@ import {
 } from '@/hooks/use-projects'
 import { useTasksByProject } from '@/hooks/use-tasks'
 import { AddProjectDialog } from '@/components/projects/AddProjectDialog'
+import { agentStore, type AgentDefinition } from '@/lib/agents'
 
 const topNav = [
   { title: 'New task', icon: Plus, accent: true },
@@ -59,14 +60,48 @@ const topNav = [
   { title: 'Remote Control', icon: Monitor },
 ] as const
 
-const agentTeam = [
-  { name: 'Team-Lead', emoji: '👑', color: 'rose' as const },
-  { name: 'Backend-Node', emoji: '🤖', color: 'amber' as const },
-  { name: 'Frontend-React', emoji: '💻', color: 'primary' as const },
-  { name: 'Coder', emoji: '📋', color: 'emerald' as const },
-] as const
+const COLORS = ['rose', 'amber', 'primary', 'emerald'] as const
+type AgentColor = (typeof COLORS)[number]
 
-type Agent = (typeof agentTeam)[number]
+function pickColor(id: string): AgentColor {
+  let hash = 0
+  for (let i = 0; i < id.length; i++) {
+    hash = ((hash << 5) - hash) + id.charCodeAt(i)
+    hash |= 0
+  }
+  return COLORS[Math.abs(hash) % COLORS.length]!
+}
+
+type Agent = Pick<AgentDefinition, 'id' | 'name' | 'emoji'> & { color: AgentColor }
+
+function useAgents(): Agent[] {
+  const cacheRef = useRef<Agent[]>([])
+  const subscribe = useCallback(
+    (cb: () => void) => agentStore.subscribe(cb),
+    [],
+  )
+  const getSnapshot = useCallback(() => {
+    const next = agentStore
+      .list()
+      .filter((a) => a.enabled)
+      .map((a) => ({
+        id: a.id,
+        name: a.name,
+        emoji: a.emoji,
+        color: pickColor(a.id),
+      }))
+    const prev = cacheRef.current
+    if (
+      prev.length === next.length &&
+      prev.every((p, i) => p.id === next[i].id)
+    ) {
+      return prev
+    }
+    cacheRef.current = next
+    return next
+  }, [])
+  return useSyncExternalStore(subscribe, getSnapshot, getSnapshot)
+}
 
 export function AppSidebar({
   activeTaskId,
@@ -98,6 +133,7 @@ export function AppSidebar({
   const activeProject = useActiveProject()
   const { setActive, remove } = useProjectsActions()
   const [addOpen, setAddOpen] = useState(false)
+  const agents = useAgents()
 
   return (
     <Sidebar variant="inset" collapsible="offcanvas" className="border-r-0">
@@ -119,7 +155,7 @@ export function AppSidebar({
       <SidebarSeparator className="mx-3 bg-border/40" />
 
       <SidebarContent className="px-2">
-        {/* Projects — each project renders its own task list as nested
+        {/* Projects â€” each project renders its own task list as nested
             children, mirroring MiniMax Code's "Contexto da conversa"
             pattern. Tasks are reactive via the tasks store. */}
         <SidebarGroup>
@@ -156,6 +192,7 @@ export function AppSidebar({
                   path={p.path}
                   active={activeProject?.id === p.id}
                   activeTaskId={activeTaskId}
+                  onActivate={() => setActive(p.id)}
                   onNewTaskForProject={() => {
                     void setActive(p.id)
                     onSelectProject(p.id)
@@ -187,7 +224,7 @@ export function AppSidebar({
           </SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
-              {agentTeam.map((a) => (
+              {agents.map((a) => (
                 <AgentRow
                   key={a.name}
                   agent={a}
@@ -195,17 +232,6 @@ export function AppSidebar({
                   onOpenSettings={() => onOpenAgentSettings(a)}
                 />
               ))}
-              <SidebarMenuItem>
-                <SidebarMenuButton
-                  size="default"
-                  className="text-muted-foreground"
-                  onClick={() => console.log('[agents] more')}
-                >
-                  <TeamAvatar emoji="⋯" color="neutral" />
-                  <span className="text-[13px]">More</span>
-                  <MoreHorizontal className="text-muted-foreground ml-auto size-4" />
-                </SidebarMenuButton>
-              </SidebarMenuItem>
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
@@ -235,6 +261,7 @@ function ProjectGroup({
   path,
   active,
   activeTaskId,
+  onActivate,
   onNewTaskForProject,
   onRemoveProject,
   onSelectTask,
@@ -244,6 +271,7 @@ function ProjectGroup({
   path: string
   active: boolean
   activeTaskId?: string
+  onActivate: () => void
   onNewTaskForProject: () => void
   onRemoveProject: () => void
   onSelectTask: (id: string) => void
@@ -265,14 +293,21 @@ function ProjectGroup({
           size="default"
           isActive={active && !hasActiveTask}
           className="text-foreground/80 pr-14"
-          onClick={() => setIsCollapsed((c) => !c)}
+          onClick={() => {
+            if (!active) {
+              onActivate()
+              setIsCollapsed(false)
+            } else {
+              setIsCollapsed((c) => !c)
+            }
+          }}
           title={path}
         >
           <Folder className="text-muted-foreground size-4 shrink-0" />
           <span className="truncate text-[13px] font-medium">{label}</span>
         </SidebarMenuButton>
 
-        {/* Action buttons on hover: + (New task) and ⋯ (Options) */}
+        {/* Action buttons on hover: + (New task) and â‹¯ (Options) */}
         <div className="absolute right-1 flex items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">
           <button
             type="button"
@@ -478,7 +513,7 @@ function LooseTasksGroup({
   )
 }
 
-/** Agent row with hover "⋯" action and right-click context menu. */
+/** Agent row with hover "â‹¯" action and right-click context menu. */
 function AgentRow({
   agent,
   onSelect,
@@ -543,5 +578,9 @@ function AgentRow({
   )
 }
 
-// (Suppression removed — SidebarItem is not exported from the sidebar
+// (Suppression removed â€” SidebarItem is not exported from the sidebar
 // UI primitives yet; the import was a leftover from an earlier draft.)
+
+
+
+

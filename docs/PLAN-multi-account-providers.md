@@ -15,6 +15,37 @@ Permitir que o BrightCode faça login e use várias contas dentro do mesmo provi
 - A documentação e o bootstrap de providers ainda não estão totalmente alinhados (por exemplo, MiniMax/PayPerQ).
 - Ainda não há quota por conta, round-robin, failover ou métricas de uso por credencial.
 
+## Estado da implementação auditado
+
+As fases 1–3 já foram implementadas em grande parte, mas ainda têm pendências de segurança e validação:
+
+| Fase | Estado | Observação |
+|---|---|---|
+| 1 — núcleo de contas | Parcial | `AccountStore`, migração e IPC existem; os segredos ainda ficam em JSON/localStorage sem keychain seguro. |
+| 2 — interface de contas | Quase concluída | A UI de contas, OAuth, renomear, remover, ativar e hidratação de `activeAccountId` existem. Falta teste real de restart e seleção. |
+| 3 — sessões e seleção | Parcial/funcional | `selectedAccountId` é persistido na task e enviado ao streaming. A tela inicial ainda não conecta o seletor de conta ao `ChatInput`. |
+
+No estado atual, `npm run build` passa. `npm run lint` também passa, mas ainda reporta avisos de dependências de hooks e Fast Refresh. A implementação só deve ser marcada como concluída depois da correção da tela inicial, dos testes de persistência e do armazenamento seguro.
+
+### Auditoria específica de Usage/quota
+
+O agente adicionou a fundação de telemetria, mas não a funcionalidade completa de quota:
+
+- [x] Tipos `UsageRecord`, `QuotaSnapshot` e `UsageSummary`.
+- [x] Modelo de janelas de quota por conta/modelo (`QuotaWindow`), inspirado no Quota Tracker do 9Router.
+- [x] Persistência local/Electron de eventos de uso.
+- [x] Registro automático do usage recebido no `message_end`.
+- [x] Estimativa de custo usando o catálogo de modelos.
+- [x] IPC para ler histórico, resumos e gravar quota.
+- [x] Aba visual `Settings > Usage` com cards por provider/conta, tokens, custo, janelas e reset.
+- [x] Ações de atualizar e limpar histórico dentro do BrightCode.
+- [x] Consulta automática de quota para Codex OAuth, Gemini CLI, Antigravity e MiniMax quando a conta fornece o endpoint oficial.
+- [ ] Fetchers específicos para GLM e demais providers.
+- [ ] Integração com endpoints de usage/dashboard do 9Router.
+- [ ] Atualização automática, cache/TTL e indicação da origem do dado.
+
+O histórico Electron agora usa uma leitura agregada própria para não depender de um `providerId` fictício. A quota automática continua separada: o 9Router consulta APIs/fetchers específicos por provider e mantém várias janelas por conta; não devemos tentar extrair os dados raspando a tela do dashboard.
+
 ## Referências analisadas
 
 - [OpenCode — Providers](https://opencode.ai/docs/providers)
@@ -111,10 +142,27 @@ Regras importantes:
 ### Fase 4 — OAuth e perfis de CLI
 
 - [ ] Listar todas as contas detectadas, sem usar um `Map` que elimine duplicatas.
-- [ ] Detectar perfis do Codex, Claude, Antigravity, Gemini e OpenCode.
+- [ ] Detectar a conta única da CLI Codex, Claude, Gemini, Antigravity e OpenCode.
 - [ ] Importar referências de perfil com segurança.
 - [ ] Exibir email/label/projeto quando disponível.
 - [ ] Implementar refresh e validação por conta.
+
+#### Regra de CLI versus OAuth
+
+Uma instalação normal de uma CLI representa uma única sessão/conta por vez. Não devemos prometer “várias contas na mesma CLI” quando o formato da CLI não oferece perfis separados. A regra do BrightCode será:
+
+- `cli_detected`: uma conta detectada por CLI/perfil local;
+- `oauth`: várias contas do mesmo provider, identificadas por email/conta;
+- `api_key`: várias chaves podem ser cadastradas manualmente;
+- múltiplas contas de CLI só serão suportadas quando a própria CLI oferecer perfis separados, diretórios isolados ou um mecanismo oficial de troca.
+
+No seletor de contas, contas CLI devem aparecer como uma conta importada, enquanto o botão “Adicionar conta” deve priorizar OAuth/API key. A troca da conta OAuth no BrightCode não deve tentar reescrever a sessão interna da CLI.
+
+#### Antigravity
+
+- [ ] Manter a investigação da detecção e autenticação do Antigravity separada da migração de contas.
+- [ ] Validar caminho de credenciais, keyring, formato do token, endpoint Cloud Code e refresh.
+- [ ] Não marcar o provider como concluído até um teste real de login, streaming e uso de ferramenta.
 
 ### Fase 5 — uso, quota e resiliência
 
@@ -129,13 +177,13 @@ Regras importantes:
 
 Criar uma aba `Usage` em Settings para consolidar o estado de todas as contas:
 
-- [ ] Cards por provider e conta.
-- [ ] Modelo usado, requisições, tokens de entrada/saída e custo estimado.
-- [ ] Quota restante, janela de reset e status de rate limit quando o provider fornecer esses dados.
-- [ ] Última atualização e origem do dado (`provider`, `CLI`, `9Router` ou `estimado localmente`).
+- [x] Cards por provider e conta.
+- [x] Modelo usado, requisições, tokens de entrada/saída e custo estimado.
+- [x] Quota restante, janela de reset e status de rate limit quando o provider fornecer esses dados.
+- [x] Última atualização e origem do dado (`provider`, `CLI`, `9Router` ou `estimado localmente`).
 - [ ] Filtros por período, provider, conta e modelo.
-- [ ] Botão de atualizar manualmente e atualização automática com cache/TTL.
-- [ ] Estados claros: disponível, expirado, limitado, erro de consulta e informação indisponível.
+- [x] Botão de atualizar manualmente; atualização automática com cache/TTL permanece pendente.
+- [x] Estados claros: disponível, expirado, limitado e informação indisponível.
 - [ ] Não exibir tokens, refresh tokens ou outras credenciais nessa tela.
 
 #### Como obter os dados

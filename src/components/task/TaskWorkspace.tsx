@@ -233,7 +233,10 @@ export function TaskWorkspace({
   title: string
   taskId: string
   project: Project | null
-  initialMessage: string | null
+  initialMessage: {
+    text: string
+    images: Array<{ id: string; data: string; mediaType: string; name: string; size: number }>
+  } | null
   explorerOpen: boolean
   onToggleExplorer?: () => void
 }) {

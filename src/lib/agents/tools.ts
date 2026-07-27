@@ -9,6 +9,7 @@
  */
 
 import type { ToolDefinition } from '@/lib/providers/types'
+import { agentStore } from './store'
 
 export const AGENT_TOOLS: ToolDefinition[] = [
   {
@@ -165,4 +166,51 @@ export const AGENT_TOOLS: ToolDefinition[] = [
       required: ['skill', 'path'],
     },
   },
+  {
+    name: 'bash',
+    description:
+      'Run a shell command inside the project working directory. The user is shown the exact command and must approve it before it runs, so prefer this only for commands the user has effectively consented to (installing dependencies, running tests, git operations, build/lint, inspecting the project). Do NOT use this to read or write files you can reach with read_file / write_file / edit_file. Output is truncated at ~50KB; long-running commands must finish within the timeout (default 60s, max 5min).',
+    parameters: {
+      type: 'object',
+      properties: {
+        command: {
+          type: 'string',
+          description:
+            'The shell command to run. Use platform-appropriate syntax. The command is run with `shell: true` so pipes, redirects, and chained commands work.',
+        },
+        cwd: {
+          type: 'string',
+          description:
+            'Working directory, relative to project root. Defaults to the project root. Stays inside the project sandbox.',
+        },
+        timeoutMs: {
+          type: 'number',
+          description:
+            'Hard timeout in milliseconds. Defaults to 60000 (1 min). The process is SIGKILLed at the deadline.',
+        },
+      },
+      required: ['command'],
+    },
+  },
 ]
+
+export function buildAgentTools(): ToolDefinition[] {
+  return agentStore.list()
+    .filter((a) => a.enabled)
+    .map((agent) => ({
+      name: `delegate_to_${agent.name.toLowerCase().replace(/\s+/g, '_')}`,
+      description: `Delegate a task to the ${agent.name} agent. ${agent.description}`,
+      parameters: {
+        type: 'object',
+        properties: {
+          task: { type: 'string', description: 'The task to delegate' },
+          context: { type: 'string', description: 'Additional context' },
+        },
+        required: ['task'],
+      },
+    }))
+}
+
+export function getAllTools(): ToolDefinition[] {
+  return [...AGENT_TOOLS, ...buildAgentTools()]
+}

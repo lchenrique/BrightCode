@@ -11,11 +11,15 @@
 import type {
   IAgentProvider,
   ModelInfo,
+  ProviderAccount,
   ProviderCredential,
   StreamChunk,
   StreamParams,
 } from './types'
-import { authStore, type StoredCredential } from './auth/store'
+import { accountStore } from './auth/account-store'
+import { authStore } from './auth/store'
+import { usageStore } from './usage/store'
+import type { UsageRecord } from './usage/types'
 
 export type RegistryListener = () => void
 
@@ -86,31 +90,62 @@ class ProviderRegistry {
     return undefined
   }
 
-  // ── Credentials ───────────────────────────────────────────────────────
+  // ── Credentials (backward compat — delegates to AccountStore) ────────
 
   setCredential(providerId: string, credential: ProviderCredential): void {
-    // Fire-and-forget: the in-memory cache is updated synchronously by
-    // authStore, and the main process broadcasts an `auth:changed` event
-    // that triggers a second `emit()` after persistence. Both leads to
-    // a re-render, but the second one is a no-op because the snapshot
-    // version is already up-to-date.
-    void authStore.set(providerId, this.toStored(credential))
+    const existing = accountStore.getAccount(providerId, 'default')
+    const account: ProviderAccount = {
+      id: 'default',
+      providerId,
+      label: existing?.label ?? 'Default',
+      email: credential.cliEmail,
+      authMethod: credential.method,
+      apiKey: credential.apiKey,
+      accessToken: credential.accessToken,
+      refreshToken: credential.refreshToken,
+      expiresAt: credential.expiresAt,
+      cliSource: credential.cliSource,
+      cliEmail: credential.cliEmail,
+      metadata: credential.metadata,
+      enabled: true,
+      lastUsedAt: Date.now(),
+      createdAt: existing?.createdAt ?? Date.now(),
+    }
+    void accountStore.addAccount(providerId, account)
     this.emit()
   }
 
   getCredential(providerId: string): ProviderCredential | undefined {
-    const stored = authStore.get(providerId)
-    if (!stored) return undefined
-    return this.fromStored(stored)
+    const account = accountStore.getActiveAccount(providerId)
+    if (!account) return undefined
+    return this.fromStored(account)
   }
 
   hasCredential(providerId: string): boolean {
-    return authStore.has(providerId)
+    return accountStore.listAccounts(providerId).length > 0
   }
 
   removeCredential(providerId: string): void {
-    void authStore.remove(providerId)
+    const accounts = accountStore.listAccounts(providerId)
+    for (const acc of accounts) {
+      void accountStore.removeAccount(providerId, acc.id)
+    }
     this.emit()
+  }
+
+  // ── Multi-account ────────────────────────────────────────────────────
+
+  listAccounts(providerId: string): ProviderAccount[] {
+    return accountStore.listAccounts(providerId)
+  }
+
+  setActiveAccount(providerId: string, accountId: string): void {
+    void accountStore.setActiveAccount(providerId, accountId)
+    this.emit()
+  }
+
+  getActiveAccount(providerId: string): ProviderAccount | undefined {
+    return accountStore.getActiveAccount(providerId)
   }
 
   // ── Models ────────────────────────────────────────────────────────────
@@ -174,8 +209,15 @@ class ProviderRegistry {
    * Models with `requiresAuth: false` (e.g. OpenCode Zen free tier) skip
    * the credential lookup entirely — the request goes out without an
    * `Authorization` header.
+   *
+   * Optionally pass `accountId` to use a specific account's credential.
+   * When omitted uses the active account (or "default").
    */
-  async *stream(modelId: string, params: StreamParams): AsyncIterable<StreamChunk> {
+  async *stream(
+    modelId: string,
+    params: StreamParams,
+    accountId?: string,
+  ): AsyncIterable<StreamChunk> {
     const resolved = this.resolveForModel(modelId)
     if (!resolved) {
       yield {
@@ -184,11 +226,18 @@ class ProviderRegistry {
       }
       return
     }
-    // Look up the model in the provider's catalog to check if it requires auth
     const model = resolved.provider.listModels().find((m) => m.id === resolved.model)
-    const requiresAuth = model?.requiresAuth !== false // default true
+    const requiresAuth = model?.requiresAuth !== false
 
-    const credential = requiresAuth ? this.getCredential(resolved.provider.id) : undefined
+    let credential: ProviderCredential | undefined
+    if (requiresAuth) {
+      if (accountId) {
+        const account = accountStore.getAccount(resolved.provider.id, accountId)
+        credential = account ? this.fromStored(account) : undefined
+      } else {
+        credential = this.getCredential(resolved.provider.id)
+      }
+    }
     if (requiresAuth && !credential) {
       yield {
         type: 'error',
@@ -198,7 +247,35 @@ class ProviderRegistry {
       }
       return
     }
-    yield* resolved.provider.stream({ ...params, model: resolved.model }, credential)
+
+    let usageData: { input: number; output: number; cacheRead?: number; cacheWrite?: number } | undefined
+
+    for await (const chunk of resolved.provider.stream({ ...params, model: resolved.model }, credential)) {
+      if (chunk.type === 'message_end' && chunk.usage) {
+        usageData = chunk.usage
+      }
+      yield chunk
+    }
+
+    if (usageData && credential) {
+      const resolvedAccountId = accountId ?? accountStore.getActiveAccount(resolved.provider.id)?.id
+      if (resolvedAccountId) {
+        const record: UsageRecord = {
+          id: crypto.randomUUID(),
+          providerId: resolved.provider.id,
+          accountId: resolvedAccountId,
+          model: resolved.model,
+          inputTokens: usageData.input,
+          outputTokens: usageData.output,
+          cacheRead: usageData.cacheRead,
+          cacheWrite: usageData.cacheWrite,
+          estimatedCost: usageStore.estimateCost(resolved.model, usageData.input, usageData.output),
+          timestamp: Date.now(),
+          source: usageData.input ? 'provider' : 'estimated',
+        }
+        void usageStore.record(record).catch(() => {})
+      }
+    }
   }
 
   // ── Subscription (for UI reactivity) ─────────────────────────────────
@@ -232,29 +309,18 @@ class ProviderRegistry {
     for (const l of this.listeners) l()
   }
 
-  // ── Stored credential shape conversion ────────────────────────────────
+  // ── Credential shape conversion ───────────────────────────────────────
 
-  private toStored(c: ProviderCredential): StoredCredential {
+  private fromStored(account: ProviderAccount): ProviderCredential {
     return {
-      method: c.method,
-      apiKey: c.apiKey,
-      accessToken: c.accessToken,
-      refreshToken: c.refreshToken,
-      expiresAt: c.expiresAt,
-      cliSource: c.cliSource,
-      cliEmail: c.cliEmail,
-    }
-  }
-
-  private fromStored(s: StoredCredential): ProviderCredential {
-    return {
-      method: s.method,
-      apiKey: s.apiKey,
-      accessToken: s.accessToken,
-      refreshToken: s.refreshToken,
-      expiresAt: s.expiresAt,
-      cliSource: s.cliSource,
-      cliEmail: s.cliEmail,
+      method: account.authMethod,
+      apiKey: account.apiKey,
+      accessToken: account.accessToken,
+      refreshToken: account.refreshToken,
+      expiresAt: account.expiresAt,
+      cliSource: account.cliSource,
+      cliEmail: account.cliEmail,
+      metadata: account.metadata,
     }
   }
 }

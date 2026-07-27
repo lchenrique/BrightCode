@@ -9,6 +9,7 @@
 
 import {
   BookOpen,
+  Bot,
   Brain,
   Code,
   FileEdit,
@@ -30,9 +31,49 @@ export interface ToolTimelineItem {
   errored?: boolean
   /** True while the tool call is still running (before the result lands). */
   pending?: boolean
+  /** True when this item is an agent delegation result. */
+  isAgentResult?: boolean
+  /** Display name of the agent that produced this result. */
+  agentName?: string
+  /** Emoji of the agent that produced this result. */
+  agentEmoji?: string
 }
 
 export function ToolTimelineItem({ item }: { item: ToolTimelineItem }) {
+  if (item.isAgentResult) {
+    return (
+      <div
+        className={cn(
+          'flex items-center gap-3 py-1.5 text-[13px]',
+          item.errored && 'text-destructive',
+        )}
+      >
+        <Bot className="text-muted-foreground size-4 shrink-0" />
+        <span className="text-foreground/80 shrink-0 text-[12.5px] font-medium">
+          {item.agentEmoji ? `${item.agentEmoji} ` : ''}{item.agentName ?? item.name}
+        </span>
+        <span className="text-muted-foreground/60 min-w-0 flex-1 truncate text-[12px]">
+          {item.input && typeof item.input === 'object' && 'task' in item.input
+            ? String((item.input as Record<string, unknown>).task ?? '').slice(0, 80)
+            : ''}
+        </span>
+        <span
+          className={cn(
+            'shrink-0 text-[11.5px] tabular-nums',
+            item.errored ? 'text-destructive' : 'text-muted-foreground',
+          )}
+          title={item.errored ? item.summary : undefined}
+        >
+          {item.errored
+            ? truncateSummary(item.summary) || 'failed'
+            : item.pending
+              ? '…'
+              : (item.summary ?? '')}
+        </span>
+      </div>
+    )
+  }
+
   const Icon = getToolIcon(item.name)
   return (
     <div
@@ -43,7 +84,7 @@ export function ToolTimelineItem({ item }: { item: ToolTimelineItem }) {
     >
       <Icon className="text-muted-foreground size-4 shrink-0" />
       <span className="text-foreground/80 shrink-0 text-[12.5px] font-medium">
-        {getToolLabel(item.name)}
+        {item.pending ? getPendingLabel(item.name) : getToolLabel(item.name)}
       </span>
       <code
         className="text-muted-foreground/80 min-w-0 flex-1 truncate font-mono text-[11.5px]"
@@ -51,15 +92,28 @@ export function ToolTimelineItem({ item }: { item: ToolTimelineItem }) {
       >
         {summarizeArgs(item.name, item.input)}
       </code>
-      <span className="text-muted-foreground shrink-0 text-[11.5px] tabular-nums">
+      <span
+        className={cn(
+          'shrink-0 text-[11.5px] tabular-nums',
+          item.errored ? 'text-destructive' : 'text-muted-foreground',
+        )}
+        title={item.errored ? item.summary : undefined}
+      >
         {item.errored
-          ? 'failed'
+          ? truncateSummary(item.summary) || 'failed'
           : item.pending
             ? '…'
             : (item.summary ?? '')}
       </span>
     </div>
   )
+}
+
+function truncateSummary(summary: string | undefined): string {
+  if (!summary) return ''
+  // Drop any leading "Error: " prefix — the red color already signals failure.
+  const cleaned = summary.replace(/^Error:\s*/i, '')
+  return cleaned.length > 60 ? `${cleaned.slice(0, 57)}…` : cleaned
 }
 
 function getToolIcon(name: string) {
@@ -107,6 +161,37 @@ function getToolLabel(name: string): string {
       return 'Terminal'
     default:
       return 'Thinking process'
+  }
+}
+
+/**
+ * In-progress label shown while the tool result has not landed yet. The
+ * static `getToolLabel` is past-tense ("Read File") which reads as if the
+ * work is done; the pending form uses a present participle to make it
+ * clear the call is still running.
+ */
+function getPendingLabel(name: string): string {
+  switch (name) {
+    case 'read_file':
+      return 'Reading'
+    case 'write_file':
+      return 'Writing'
+    case 'edit_file':
+      return 'Editing'
+    case 'list_files':
+      return 'Listing'
+    case 'search_files':
+      return 'Searching'
+    case 'list_skills':
+      return 'Discovering'
+    case 'read_skill':
+      return 'Loading'
+    case 'read_skill_file':
+      return 'Reading'
+    case 'bash':
+      return 'Running'
+    default:
+      return 'Working'
   }
 }
 

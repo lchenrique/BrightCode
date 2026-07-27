@@ -23,7 +23,10 @@
  */
 
 import type { CLISource, ProviderCredential } from '../types'
+import type { ProviderAccount } from '../types'
+import { accountStore } from './account-store'
 
+/** @deprecated Use ProviderAccount from types.ts instead. */
 export interface StoredCredential {
   method: ProviderCredential['method']
   apiKey?: string
@@ -32,180 +35,119 @@ export interface StoredCredential {
   expiresAt?: number
   cliSource?: CLISource
   cliEmail?: string
+  metadata?: Record<string, unknown>
 }
 
 type Listener = () => void
 
-// ── Detection ───────────────────────────────────────────────────────────
-
 const isElectron =
   typeof window !== 'undefined' && typeof window.electronAPI !== 'undefined'
 
-// ── Browser (localStorage) backend ──────────────────────────────────────
-
-const STORAGE_KEY = 'brightcode.auth.v1'
-
-function readLocal(): Record<string, StoredCredential> {
-  if (typeof localStorage === 'undefined') return {}
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY)
-    if (!raw) return {}
-    const parsed = JSON.parse(raw)
-    return typeof parsed === 'object' && parsed !== null ? parsed : {}
-  } catch {
-    return {}
-  }
+function now(): number {
+  return Date.now()
 }
 
-function writeLocal(data: Record<string, StoredCredential>): void {
-  if (typeof localStorage === 'undefined') return
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(data))
-  } catch (err) {
-    console.error('[authStore] failed to persist credentials:', err)
-  }
-}
-
-const localListeners = new Set<Listener>()
-const localBackend = {
-  read: (): Record<string, StoredCredential> => readLocal(),
-  write: (data: Record<string, StoredCredential>): void => writeLocal(data),
-  subscribe: (l: Listener): (() => void) => {
-    localListeners.add(l)
-    return () => localListeners.delete(l)
-  },
-  notify: (): void => {
-    for (const l of localListeners) l()
-  },
-}
-
-// ── Electron backend ────────────────────────────────────────────────────
-
-const electronBackend = (() => {
-  if (!isElectron) return null
-  const api = window.electronAPI!.auth
-  let cache: Record<string, StoredCredential> = {}
-  let hydrated = false
-  let pendingHydrate: Promise<void> | null = null
-
-  async function ensureHydrated(): Promise<void> {
-    if (hydrated) return
-    if (pendingHydrate) return pendingHydrate
-    pendingHydrate = (async () => {
-      const list = await api.list()
-      const next: Record<string, StoredCredential> = {}
-      for (const { providerId, credential } of list) {
-        next[providerId] = credential
-      }
-      cache = next
-      hydrated = true
-    })()
-    await pendingHydrate
-    pendingHydrate = null
-  }
-
-  const listeners = new Set<Listener>()
-  // Main process broadcasts after every set/remove/clear.
-  api.onChanged(() => {
-    hydrated = false
-    void ensureHydrated().then(() => {
-      for (const l of listeners) l()
-    })
-  })
-
+function toAccount(providerId: string, cred: StoredCredential, id = 'default', label = 'Default'): ProviderAccount {
   return {
-    read: (): Record<string, StoredCredential> => cache,
-    write: (data: Record<string, StoredCredential>): void => {
-      // For Electron we never write directly; each op is its own IPC call.
-      // This stays here only so the unified `set` below can diff the old
-      // vs new value to decide which providerIds to update.
-      cache = data
-    },
-    subscribe: (l: Listener): (() => void) => {
-      listeners.add(l)
-      return () => listeners.delete(l)
-    },
-    ensureHydrated,
+    id,
+    providerId,
+    label,
+    authMethod: cred.method,
+    apiKey: cred.apiKey,
+    accessToken: cred.accessToken,
+    refreshToken: cred.refreshToken,
+    expiresAt: cred.expiresAt,
+    cliSource: cred.cliSource,
+    cliEmail: cred.cliEmail,
+    metadata: cred.metadata,
+    enabled: true,
+    lastUsedAt: now(),
+    createdAt: now(),
   }
-})()
+}
 
-// ── Unified store ───────────────────────────────────────────────────────
+function toStored(account: ProviderAccount): StoredCredential {
+  return {
+    method: account.authMethod,
+    apiKey: account.apiKey,
+    accessToken: account.accessToken,
+    refreshToken: account.refreshToken,
+    expiresAt: account.expiresAt,
+    cliSource: account.cliSource,
+    cliEmail: account.cliEmail,
+    metadata: account.metadata,
+  }
+}
 
-const backend = isElectron && electronBackend ? electronBackend : localBackend
-
+/** Bridge from old StoredCredential format to accountStore's ProviderAccount.
+ *  All public methods read/write via accountStore; the old `brightcode.auth.v1`
+ *  localStorage key is no longer used directly (migrated on first accountStore read). */
 export const authStore = {
-  /** Read all credentials synchronously. In Electron the cache is primed
-   *  at app start; in the browser it's a direct localStorage read. */
   readAll(): Record<string, StoredCredential> {
-    return backend.read()
+    const all = accountStore.readAll()
+    const out: Record<string, StoredCredential> = {}
+    for (const [providerId] of Object.entries(all)) {
+      const active = accountStore.getActiveAccount(providerId)
+      if (active) {
+        out[providerId] = toStored(active)
+      }
+    }
+    return out
   },
 
   get(providerId: string): StoredCredential | undefined {
-    return backend.read()[providerId]
+    const account = accountStore.getActiveAccount(providerId)
+    return account ? toStored(account) : undefined
   },
 
-  /** Set a credential. In Electron this is async (IPC round-trip) but the
-   *  in-memory cache is updated synchronously so subsequent reads see the
-   *  new value. The returned promise resolves once the main process
-   *  acknowledges the write. */
   async set(providerId: string, credential: StoredCredential): Promise<void> {
-    if (isElectron) {
-      await window.electronAPI!.auth.set(providerId, credential)
-      // Cache is refreshed via the broadcast handler, but update it now
-      // so the synchronous read right after set() sees the new value.
-      const data = { ...backend.read(), [providerId]: credential }
-      backend.write(data)
-      return
+    const existing = accountStore.getAccount(providerId, 'default')
+    const account = toAccount(providerId, credential, 'default', existing?.label ?? 'Default')
+    if (existing) {
+      account.createdAt = existing.createdAt
     }
-    const data = { ...backend.read(), [providerId]: credential }
-    localBackend.write(data)
-    localBackend.notify()
+    await accountStore.addAccount(providerId, account)
   },
 
   async remove(providerId: string): Promise<void> {
-    if (isElectron) {
-      await window.electronAPI!.auth.remove(providerId)
-      const data = { ...backend.read() }
-      delete data[providerId]
-      backend.write(data)
-      return
+    const accounts = accountStore.listAccounts(providerId)
+    for (const acc of accounts) {
+      await accountStore.removeAccount(providerId, acc.id)
     }
-    const data = { ...backend.read() }
-    delete data[providerId]
-    localBackend.write(data)
-    localBackend.notify()
   },
 
   has(providerId: string): boolean {
-    return providerId in backend.read()
+    return accountStore.listAccounts(providerId).length > 0
   },
 
   list(): Array<{ providerId: string; credential: StoredCredential }> {
-    return Object.entries(backend.read()).map(([providerId, credential]) => ({
-      providerId,
-      credential,
-    }))
+    const all = accountStore.readAll()
+    const out: Array<{ providerId: string; credential: StoredCredential }> = []
+    for (const [providerId] of Object.entries(all)) {
+      const active = accountStore.getActiveAccount(providerId)
+      const acc = active ?? accountStore.listAccounts(providerId)[0]
+      if (acc) {
+        out.push({ providerId, credential: toStored(acc) })
+      }
+    }
+    return out
   },
 
   async clear(): Promise<void> {
-    if (isElectron) {
-      await window.electronAPI!.auth.clear()
-      backend.write({})
-      return
+    const all = accountStore.readAll()
+    for (const [providerId] of Object.entries(all)) {
+      for (const account of accountStore.listAccounts(providerId)) {
+        await accountStore.removeAccount(providerId, account.id)
+      }
     }
-    localBackend.write({})
-    localBackend.notify()
   },
 
-  /** Subscribe to credential changes. Used by the registry to re-emit. */
   subscribe(listener: Listener): () => void {
-    return backend.subscribe(listener)
+    return accountStore.subscribe(listener)
   },
 
-  /** Best-effort: pre-load the in-memory cache. Call from app boot to
-   *  avoid an empty UI flash in Electron. */
   async hydrate(): Promise<void> {
-    if (electronBackend) await electronBackend.ensureHydrated()
+    await accountStore.hydrate()
   },
 
   isElectron,

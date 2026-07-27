@@ -36,6 +36,7 @@ import {
 
 interface GeminiPart {
   text?: string
+  inlineData?: { mimeType: string; data: string }
   functionCall?: { name: string; args?: Record<string, unknown> }
   functionResponse?: { name: string; response: Record<string, unknown> }
   thought?: boolean
@@ -71,8 +72,8 @@ function blockToPart(b: ContentBlock): GeminiPart | null {
     case 'text':
       return { text: b.text }
     case 'image':
-      // Inline image data — base64; for now log a placeholder.
-      return { text: `[image:${b.mediaType};${b.data.length}B]` }
+      // Inline base64 image. Gemini expects `{ inlineData: { mimeType, data } }`.
+      return { inlineData: { mimeType: b.mediaType, data: b.data } }
     case 'tool_use':
       return {
         functionCall: { name: b.name, args: (b.input as Record<string, unknown>) ?? {} },

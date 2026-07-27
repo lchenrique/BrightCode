@@ -13,6 +13,7 @@ export type Task = {
   projectId: string | null
   title: string
   selectedModel?: string
+  selectedAccountId?: string
   createdAt: number
   updatedAt: number
 }
@@ -36,6 +37,7 @@ export function createTask(input: {
   projectId: string | null
   title: string
   selectedModel?: string
+  selectedAccountId?: string
   createdAt?: number
   updatedAt?: number
 }): Task {
@@ -45,6 +47,7 @@ export function createTask(input: {
     projectId: input.projectId,
     title: input.title,
     selectedModel: input.selectedModel,
+    selectedAccountId: input.selectedAccountId,
     createdAt: input.createdAt ?? now,
     updatedAt: input.updatedAt ?? now,
   }
@@ -69,7 +72,7 @@ export function removeTask(id: string): void {
 
 export function updateTask(
   id: string,
-  patch: Partial<Pick<Task, 'title' | 'projectId' | 'selectedModel'>>,
+  patch: Partial<Pick<Task, 'title' | 'projectId' | 'selectedModel' | 'selectedAccountId'>>,
 ): void {
   const existing = tasksStore.get('tasks')
   tasksStore.set(
@@ -106,6 +109,7 @@ export function registerTasksIpc(): void {
         projectId: string | null
         title: string
         selectedModel?: string
+        selectedAccountId?: string
       },
     ) => createTask(input),
   )
@@ -115,7 +119,7 @@ export function registerTasksIpc(): void {
     (
       _e,
       id: string,
-      patch: Partial<Pick<Task, 'title' | 'projectId' | 'selectedModel'>>,
+      patch: Partial<Pick<Task, 'title' | 'projectId' | 'selectedModel' | 'selectedAccountId'>>,
     ) => updateTask(id, patch),
   )
   ipcMain.handle(IPC.TASKS_GET_MESSAGES, (_e, taskId: string) => getTaskMessages(taskId))

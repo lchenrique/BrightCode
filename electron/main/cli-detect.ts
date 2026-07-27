@@ -114,7 +114,7 @@ function geminiKeyringServiceCandidates(): string[] {
 function antigravityKeyringServiceCandidates(): string[] {
   // Antigravity is a newer CLI and the exact service name is not
   // documented. We try a few likely candidates; first one wins.
-  return ['Antigravity', 'antigravity', 'Google Antigravity', 'google-antigravity']
+  return ['gemini', 'Antigravity', 'antigravity', 'Google Antigravity', 'google-antigravity']
 }
 
 // ── File readers ────────────────────────────────────────────────────────

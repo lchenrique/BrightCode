@@ -95,6 +95,18 @@ export const IPC = {
   TOOL_EXECUTE: 'tool:execute',
 
   /**
+   * Bash tool approval flow. When the model calls the `bash` tool, the
+   * main process needs the user's explicit OK before running an
+   * arbitrary shell command. Main sends REQUEST (with `approvalId`),
+   * renderer shows a modal, user clicks Approve/Deny, renderer sends
+   * RESPOND with the same `approvalId`. The main process keeps the
+   * pending request in a Map keyed by `approvalId` and resolves the
+   * caller's Promise when the response arrives.
+   */
+  TOOL_BASH_APPROVAL_REQUEST: 'tool:bash-approval-request',
+  TOOL_BASH_APPROVAL_RESPOND: 'tool:bash-approval-respond',
+
+  /**
    * Skills discovery + reading/writing from Codex, Agents, Gemini, OpenCode and project folders.
    */
   SKILLS_LIST: 'skills:list',
@@ -108,6 +120,56 @@ export const IPC = {
   TERMINAL_KILL: 'terminal:kill',
   TERMINAL_DATA: 'terminal:data',
   TERMINAL_EXIT: 'terminal:exit',
+
+  /**
+   * Multi-account provider support. The renderer uses ACCOUNTS_* channels
+   * to CRUD per-provider accounts; the main process persists them under
+   * the new `accounts` key (keeping the old `credentials` key for backward
+   * compat during migration).
+   */
+  ACCOUNTS_LIST: 'accounts:list',
+  ACCOUNTS_LIST_ALL: 'accounts:list-all',
+  ACCOUNTS_GET: 'accounts:get',
+  ACCOUNTS_ADD: 'accounts:add',
+  ACCOUNTS_UPDATE: 'accounts:update',
+  ACCOUNTS_REMOVE: 'accounts:remove',
+  ACCOUNTS_SET_ACTIVE: 'accounts:set-active',
+  ACCOUNTS_GET_ACTIVE: 'accounts:get-active',
+  ACCOUNTS_LIST_ACTIVE: 'accounts:list-active',
+  /** Main → renderer broadcast when accounts change. */
+  ACCOUNTS_CHANGED: 'accounts:changed',
+
+  /**
+   * Agent team definitions. The renderer uses AGENTS_* channels to
+   * CRUD agent definitions; the main process persists them under the
+   * `agents` key in electron-store.
+   */
+  AGENTS_LIST: 'agents:list',
+  AGENTS_GET: 'agents:get',
+  AGENTS_ADD: 'agents:add',
+  AGENTS_UPDATE: 'agents:update',
+  AGENTS_REMOVE: 'agents:remove',
+  /** Main → renderer broadcast when agents change. */
+  AGENTS_CHANGED: 'agents:changed',
+
+  /**
+   * Usage tracking. The renderer records usage events and reads summaries;
+   * the main process persists them under the `usage` and `quota` keys.
+   */
+  USAGE_RECORD: 'usage:record',
+  USAGE_GET_HISTORY: 'usage:get-history',
+  USAGE_GET_ALL_HISTORY: 'usage:get-all-history',
+  USAGE_GET_SUMMARIES: 'usage:get-summaries',
+  USAGE_SET_QUOTA: 'usage:set-quota',
+  USAGE_GET_QUOTA: 'usage:get-quota',
+  USAGE_GET_ALL_QUOTAS: 'usage:get-all-quotas',
+  USAGE_FETCH_CODEX: 'usage:fetch-codex',
+  USAGE_READ_CODEX_LOCAL: 'usage:read-codex-local',
+  /** Generic server-side fetch for quota endpoints (avoids renderer CORS). */
+  USAGE_FETCH_QUOTA: 'usage:fetch-quota',
+  USAGE_CLEAR: 'usage:clear',
+  /** Main → renderer broadcast when usage or quota data changes. */
+  USAGE_CHANGED: 'usage:changed',
 } as const
 
 export type IpcChannel = (typeof IPC)[keyof typeof IPC]

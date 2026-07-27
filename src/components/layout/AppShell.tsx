@@ -12,6 +12,7 @@ import { useSettingsListener } from '@/hooks/use-settings'
 import { useActiveProject, useProjectsActions } from '@/hooks/use-projects'
 import { tasksStore, deriveTaskTitle } from '@/lib/tasks/store'
 import { requestProjectFileOpen } from '@/lib/projects/file-events'
+import { BashApprovalDialog } from '@/components/chat/BashApprovalDialog'
 
 import { SkillsView } from '@/components/skills/SkillsView'
 
@@ -96,14 +97,38 @@ export function AppShell() {
    * project, mirroring MiniMax Code.
    */
   const handleCreateTask = useCallback(
-    (message: string, selectedModel?: string) => {
+    (
+      payload: { text: string; images: import('@/components/home/ChatInput').AttachedImage[] },
+      selectedModel?: string,
+      selectedAccountId?: string,
+    ) => {
       const projectId = activeProject?.id ?? null
-      const title = deriveTaskTitle(message)
-      const task = tasksStore.create({ projectId, title, selectedModel })
-      tasksStore.setPendingFirstMessage(task.id, message)
+      const title = deriveTaskTitle(payload.text)
+      const task = tasksStore.create({ projectId, title, selectedModel, selectedAccountId })
+      tasksStore.setPendingFirstMessage(task.id, payload)
       setView({ kind: 'task', id: task.id })
     },
     [activeProject],
+  )
+
+  /**
+   * When the user picks a project in the sidebar, auto-resume the
+   * most recent task in that project — so they don't lose context
+   * every time they switch projects. Falls back to the empty welcome
+   * view when the project has no tasks yet.
+   */
+  const handleSelectProject = useCallback(
+    (projectId: string) => {
+      void setActiveProject(projectId).then(() => {
+        const latest = tasksStore.getTasksByProject(projectId)[0]
+        if (latest) {
+          setView({ kind: 'task', id: latest.id })
+        } else {
+          setView({ kind: 'welcome' })
+        }
+      })
+    },
+    [setActiveProject],
   )
 
   return (
@@ -121,10 +146,7 @@ export function AppShell() {
           onNewTask={() => setView({ kind: 'welcome' })}
           onOpenSearch={() => setSearchOpen(true)}
           onSelectSkills={() => setView({ kind: 'skills' })}
-          onSelectProject={(projectId) => {
-            void setActiveProject(projectId)
-            setView({ kind: 'welcome' })
-          }}
+          onSelectProject={handleSelectProject}
           onSelectTask={(id) => {
             const task = tasksStore.getTask(id)
             if (task?.projectId) {
@@ -197,6 +219,7 @@ export function AppShell() {
           emoji={agentSettings.emoji}
         />
       )}
+      <BashApprovalDialog />
     </SidebarProvider>
   )
 }

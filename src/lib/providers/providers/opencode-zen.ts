@@ -3,7 +3,7 @@
  * https://opencode.ai/docs/zen/
  *
  * - Free models (minimax-m2.5-free, big-pickle, etc.) require no API key
- * - Paid models (gpt-5.5, gpt-5.4, etc.) need an OpenCode API key
+ * - Paid models (gpt-5.6-sol, gpt-5.6-terra, etc.) need an OpenCode API key
  * - Endpoint: https://opencode.ai/zen/v1/chat/completions
  * - Format: OpenAI-compatible chat completions
  */

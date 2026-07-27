@@ -7,7 +7,7 @@
  * only the wire form.
  */
 
-import type { ChatMessage } from '@/lib/providers'
+import type { ChatMessage, ContentBlock } from '@/lib/providers'
 
 export type Role = 'user' | 'assistant' | 'system' | 'tool' | 'error'
 
@@ -15,6 +15,13 @@ export interface Message {
   id: string
   role: Role
   content: string
+  /**
+   * Optional multimodal content blocks (images, etc). When set, this is
+   * what gets sent to the model; `content` is the text-only transcript
+   * used by the UI. Persisted alongside `content` so the original
+   * payload survives reloads.
+   */
+  contentBlocks?: ContentBlock[]
   /** Internal thinking / reasoning trace. */
   thinking?: string
   model?: string
@@ -36,6 +43,12 @@ export interface Message {
   toolResultSummary?: string
   /** True when the tool call errored (vs a normal return). */
   toolError?: boolean
+  /** True when this tool result comes from an agent delegation. */
+  isAgentResult?: boolean
+  /** The display name of the agent that produced this result. */
+  agentName?: string
+  /** Emoji associated with the agent. */
+  agentEmoji?: string
 }
 
 /**
@@ -98,6 +111,14 @@ export function toChatMessage(m: Message): ChatMessage {
       toolCallId: m.toolCalls?.[0]?.id,
       toolName: m.toolCalls?.[0]?.name,
       content: m.content,
+    }
+  }
+  if (m.role === 'user' && m.contentBlocks && m.contentBlocks.length > 0) {
+    // Multimodal user message — replay the full content blocks to the
+    // model. The format handlers translate per-provider.
+    return {
+      role: 'user',
+      content: m.contentBlocks,
     }
   }
   if (m.role === 'assistant' && m.toolCalls && m.toolCalls.length > 0) {
@@ -177,6 +198,16 @@ export function summarizeToolResult(name: string, result: unknown): string {
     typeof result.content === 'string'
   ) {
     return `${result.content.length} chars`
+  }
+  if (
+    name === 'bash' &&
+    result &&
+    typeof result === 'object' &&
+    'exitCode' in result
+  ) {
+    const r = result as { exitCode: number; durationMs?: number }
+    const ms = r.durationMs ? ` in ${r.durationMs}ms` : ''
+    return r.exitCode === 0 ? `exit 0${ms}` : `exit ${r.exitCode}${ms}`
   }
   return 'done'
 }

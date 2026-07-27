@@ -12,6 +12,10 @@ export interface OAuthConfig {
   codeChallengeMethod?: 'S256' | 'plain'
   contentType?: 'application/x-www-form-urlencoded' | 'application/json'
   extraAuthParams?: Record<string, string>
+  /** Some OAuth clients, notably Codex, require a registered fixed callback. */
+  fixedPort?: number
+  callbackPath?: string
+  callbackHost?: string
 }
 
 export const OAUTH_CONFIGS: Record<string, OAuthConfig> = {
@@ -29,6 +33,9 @@ export const OAUTH_CONFIGS: Record<string, OAuthConfig> = {
       codex_cli_simplified_flow: 'true',
       originator: 'codex_cli_rs',
     },
+    fixedPort: 1455,
+    callbackPath: '/auth/callback',
+    callbackHost: 'localhost',
   },
   google: {
     providerId: 'google',
@@ -56,5 +63,23 @@ export const OAUTH_CONFIGS: Record<string, OAuthConfig> = {
     scopes: ['group_id', 'profile', 'model.completion'],
     codeChallengeMethod: 'S256',
     contentType: 'application/x-www-form-urlencoded',
+  },
+  antigravity: {
+    providerId: 'antigravity',
+    name: 'Google Cloud Code (Antigravity)',
+    clientId: '764086051850-brightcode.apps.googleusercontent.com',
+    authorizeUrl: 'https://accounts.google.com/o/oauth2/v2/auth',
+    tokenUrl: 'https://oauth2.googleapis.com/token',
+    scopes: [
+      'https://www.googleapis.com/auth/userinfo.email',
+      'https://www.googleapis.com/auth/cloud-platform',
+      'https://www.googleapis.com/auth/cloudcode',
+    ],
+    codeChallengeMethod: 'S256',
+    contentType: 'application/x-www-form-urlencoded',
+    extraAuthParams: {
+      access_type: 'offline',
+      prompt: 'consent',
+    },
   },
 }

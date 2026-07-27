@@ -22,6 +22,8 @@ export type Task = {
   title: string
   /** Provider/model selection restored whenever this conversation is opened. */
   selectedModel?: string
+  /** Account selection restored whenever this conversation is opened. */
+  selectedAccountId?: string
   createdAt: number
   updatedAt: number
 }
@@ -36,7 +38,12 @@ class TasksStore {
   // Transient: when a task is created from the welcome screen, the
   // first user message is parked here keyed by task id. The TaskView
   // reads it on mount, auto-sends it, and clears the entry.
-  private pendingFirstMessage = new Map<string, string>()
+  // Holds the full submit payload (text + attached images) so multimodal
+  // first messages survive the welcome → task view handoff.
+  private pendingFirstMessage = new Map<
+    string,
+    { text: string; images: Array<{ id: string; data: string; mediaType: string; name: string; size: number }> }
+  >()
 
   constructor() {
     this.initFromElectron()
@@ -86,6 +93,7 @@ class TasksStore {
     projectId: string | null
     title: string
     selectedModel?: string
+    selectedAccountId?: string
   }): Task {
     const now = Date.now()
     const task: Task = {
@@ -93,6 +101,7 @@ class TasksStore {
       projectId: input.projectId,
       title: input.title,
       selectedModel: input.selectedModel,
+      selectedAccountId: input.selectedAccountId,
       createdAt: now,
       updatedAt: now,
     }
@@ -117,7 +126,7 @@ class TasksStore {
 
   update(
     id: string,
-    patch: Partial<Pick<Task, 'title' | 'projectId' | 'selectedModel'>>,
+    patch: Partial<Pick<Task, 'title' | 'projectId' | 'selectedModel' | 'selectedAccountId'>>,
   ): void {
     this.tasks = this.tasks.map((t) =>
       t.id === id ? { ...t, ...patch, updatedAt: Date.now() } : t,
@@ -132,20 +141,27 @@ class TasksStore {
   // ── Pending first message (welcome → task handoff) ───────────────────
 
   /**
-   * Park the first user message so the TaskView can pick it up after
-   * the view switch. No emit — pending messages are transient and
-   * shouldn't trigger re-renders of subscribers that care about
-   * task list state.
+   * Park the first user message (text + attached images) so the
+   * TaskView can pick it up after the view switch. No emit — pending
+   * messages are transient and shouldn't trigger re-renders of
+   * subscribers that care about task list state.
    */
-  setPendingFirstMessage(taskId: string, message: string): void {
-    this.pendingFirstMessage.set(taskId, message)
+  setPendingFirstMessage(
+    taskId: string,
+    payload: { text: string; images: Array<{ id: string; data: string; mediaType: string; name: string; size: number }> },
+  ): void {
+    this.pendingFirstMessage.set(taskId, payload)
   }
 
   /**
-   * Read the pending message (without removing). Used by TaskView to
+   * Read the pending payload (without removing). Used by TaskView to
    * decide whether to auto-send on mount.
    */
-  peekPendingFirstMessage(taskId: string): string | undefined {
+  peekPendingFirstMessage(
+    taskId: string,
+  ):
+    | { text: string; images: Array<{ id: string; data: string; mediaType: string; name: string; size: number }> }
+    | undefined {
     return this.pendingFirstMessage.get(taskId)
   }
 

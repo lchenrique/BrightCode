@@ -21,6 +21,7 @@ import {
 } from '@/components/ui/dialog'
 import { Switch } from '@/components/ui/switch'
 import { ProvidersSettings } from './ProvidersSettings'
+import { UsageSettings } from './UsageSettings'
 import { cn } from '@/lib/utils'
 
 /* ------------------------------------------------------------------ */
@@ -458,6 +459,8 @@ export function SettingsDialog({
                 <AppearanceTab />
               ) : tab === 'connection' ? (
                 <ProvidersSettings />
+              ) : tab === 'usage' ? (
+                <UsageSettings />
               ) : (
                 <PlaceholderTab id={tab} />
               )}

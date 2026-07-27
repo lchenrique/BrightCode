@@ -11,7 +11,9 @@
  */
 
 import type { Project } from '@/lib/projects/store'
-import { AGENT_TOOLS } from './tools'
+import type { ToolDefinition } from '@/lib/providers/types'
+import { AGENT_TOOLS, buildAgentTools } from './tools'
+import { agentStore } from './store'
 
 export interface AgentSkillSummary {
   selector: string
@@ -60,6 +62,30 @@ export function buildSystemPrompt(ctx: SystemPromptContext = {}): string {
 
   if (includeTools && AGENT_TOOLS.length > 0) {
     sections.push('', '## Available tools', formatToolsForPrompt(AGENT_TOOLS))
+
+    const agentTools = buildAgentTools()
+    const enabledAgents = agentStore.list().filter(a => a.enabled)
+
+    if (enabledAgents.length > 0) {
+      sections.push(
+        '',
+        '## Delegated agents',
+        'You have access to specialized AI agents you can delegate work to.',
+        'Each agent has its own model, system prompt, and tool access.',
+        '',
+        'Call a delegate_to_* tool when:',
+        "- The task is large and better handled independently",
+        "- The task matches the agent's specialization (read its description)",
+        '- The work requires a different model or expertise',
+        '',
+        'Provide a clear `task` string describing what to do.',
+        'Optionally include `context` with relevant background or files.',
+        'The agent runs independently and returns results.',
+        'Do NOT call delegate_to_* for trivial lookups — use the regular tools above.',
+        '',
+        formatToolsForPrompt(agentTools),
+      )
+    }
   }
 
   sections.push(
@@ -85,7 +111,7 @@ export function buildSystemPrompt(ctx: SystemPromptContext = {}): string {
   return sections.join('\n')
 }
 
-function formatToolsForPrompt(tools: typeof AGENT_TOOLS): string {
+function formatToolsForPrompt(tools: ToolDefinition[]): string {
   return tools
     .map((t) => {
       const props = Object.entries(t.parameters.properties)

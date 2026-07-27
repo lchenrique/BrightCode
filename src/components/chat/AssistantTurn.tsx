@@ -118,8 +118,24 @@ function AssistantTurnComponent({
       errored: result?.toolError,
       // Pending = no result yet AND we're still streaming.
       pending: streaming && !result,
+      isAgentResult: result?.isAgentResult,
+      agentName: result?.agentName,
+      agentEmoji: result?.agentEmoji,
     }
   })
+
+  // The text-generation phase is over once the assistant message has
+  // committed content (the for-await loop in ChatSurface finishes text
+  // streaming before it dispatches tool calls). At that point the global
+  // `streaming` flag stays true (the agent loop is still running) but
+  // the generic "Almost there…" / "Working step by step…" phrases are
+  // misleading — the model has already emitted its words. Hide them
+  // until either tool work begins (pending items > 0) or a new round
+  // of text comes in. Without this, the user sees the cycling phrase
+  // stack up after every model answer.
+  const hasFinishedText = assistant.content.trim().length > 0
+  const hasPendingTool = items.some((item) => item.pending)
+  const showWorkingStatus = streaming && (assistant.streaming || !hasFinishedText || hasPendingTool)
 
   // Categorize tools for the header counters. The labels match the
   // MiniMax Code phrasing ("Viewed", "Edited", "Ran", "Searched").
@@ -210,7 +226,7 @@ function AssistantTurnComponent({
               turn (see MessageList) — the turn only owns the thinking
               + tool execution, not the final text. */}
 
-          {streaming && (
+          {showWorkingStatus && (
             <WorkingStatus phrase={workingPhrase} />
           )}
         </div>
@@ -219,7 +235,7 @@ function AssistantTurnComponent({
       {/* When collapsed, keep the same animated bot visible below the
           summary. This replaces the old detached "..." loader and avoids
           introducing a second mascot outside the active turn. */}
-      {!open && streaming && (
+      {!open && showWorkingStatus && (
         <div className="ml-5">
           <WorkingStatus phrase={workingPhrase} />
         </div>

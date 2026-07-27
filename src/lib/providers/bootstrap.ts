@@ -14,6 +14,7 @@ import {
   createOpenAIProvider,
   createOpenCodeGoProvider,
   createOpenCodeZenProvider,
+  createMiniMaxProvider,
   providerRegistry,
 } from '.'
 
@@ -25,5 +26,6 @@ export function bootstrapProviders(): void {
     createAntigravityProvider(),
     createOpenCodeZenProvider(),
     createOpenCodeGoProvider(),
+    createMiniMaxProvider(),
   ])
 }

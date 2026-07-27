@@ -60,6 +60,7 @@ export function useTasksActions() {
       projectId: string | null
       title: string
       selectedModel?: string
+      selectedAccountId?: string
     }) =>
       tasksStore.create(input),
     [],

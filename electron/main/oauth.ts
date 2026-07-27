@@ -25,6 +25,9 @@ export interface OAuthConfig {
   codeChallengeMethod?: 'S256' | 'plain'
   contentType?: 'application/x-www-form-urlencoded' | 'application/json'
   extraAuthParams?: Record<string, string>
+  fixedPort?: number
+  callbackPath?: string
+  callbackHost?: string
 }
 
 export interface OAuthResult {
@@ -33,6 +36,8 @@ export interface OAuthResult {
   refreshToken?: string
   expiresAt?: number
   email?: string
+  accountId?: string
+  idToken?: string
 }
 
 export interface OAuthErrorResult {
@@ -80,6 +85,7 @@ export function cancelOAuthFlow(reason = 'Cancelled by user'): void {
 
 function startLocalCallbackServer(
   _state: string,
+  port: number | undefined,
   onCallback: (params: Record<string, string>) => void,
 ): Promise<{ port: number; close: () => void }> {
   return new Promise((resolve, reject) => {
@@ -133,7 +139,7 @@ function startLocalCallbackServer(
       }
     })
 
-    server.listen(0, '127.0.0.1', () => {
+    server.listen(port ?? 0, '127.0.0.1', () => {
       const addr = server.address()
       const port = typeof addr === 'object' && addr ? addr.port : 0
       resolve({
@@ -164,14 +170,14 @@ export async function runOAuthFlow(config: OAuthConfig): Promise<OAuthResult | O
   let serverInfo: { port: number; close: () => void }
 
   try {
-    serverInfo = await startLocalCallbackServer(state, (params) => {
+    serverInfo = await startLocalCallbackServer(state, config.fixedPort, (params) => {
       callbackParams = params
     })
   } catch (err) {
     return { ok: false, error: `Failed to start local callback server: ${(err as Error).message}` }
   }
 
-  const redirectUri = `http://127.0.0.1:${serverInfo.port}/callback`
+  const redirectUri = `http://${config.callbackHost ?? '127.0.0.1'}:${serverInfo.port}${config.callbackPath ?? '/callback'}`
 
   // Build Auth URL
   const params = new URLSearchParams({
@@ -185,7 +191,10 @@ export async function runOAuthFlow(config: OAuthConfig): Promise<OAuthResult | O
     ...(config.extraAuthParams ?? {}),
   })
 
-  const authUrl = `${config.authorizeUrl}?${params.toString()}`
+  // Codex/OpenAI's OAuth client expects spaces in `scope` as `%20`.
+  // URLSearchParams serializes them as `+`, which can be rejected by Hydra
+  // as an invalid authorization request.
+  const authUrl = `${config.authorizeUrl}?${params.toString().replace(/\+/g, '%20')}`
 
   return new Promise<OAuthResult | OAuthErrorResult>((resolve) => {
     const timeout = setTimeout(() => {
@@ -290,11 +299,14 @@ async function exchangeCode(
     expires_in?: number;
     user?: { email?: string };
     email?: string;
+    id_token?: string;
   }
 
   if (!json.access_token) {
     return { ok: false, error: 'Response missing access_token' }
   }
+
+  const accountId = extractOpenAIAccountId(json.id_token) ?? extractOpenAIAccountId(json.access_token)
 
   const expiresAt = typeof json.expires_in === 'number'
     ? Date.now() + json.expires_in * 1000
@@ -306,6 +318,25 @@ async function exchangeCode(
     refreshToken: json.refresh_token,
     expiresAt,
     email: json.user?.email || json.email,
+    accountId,
+    idToken: json.id_token,
+  }
+}
+
+function extractOpenAIAccountId(token: string | undefined): string | undefined {
+  if (!token) return undefined
+  const parts = token.split('.')
+  if (parts.length < 2) return undefined
+  try {
+    const encoded = parts[1].replace(/-/g, '+').replace(/_/g, '/')
+    const padded = encoded + '='.repeat((4 - (encoded.length % 4)) % 4)
+    const payload = JSON.parse(Buffer.from(padded, 'base64').toString('utf8')) as Record<string, unknown>
+    const auth = payload['https://api.openai.com/auth']
+    return auth && typeof auth === 'object' && typeof (auth as { chatgpt_account_id?: unknown }).chatgpt_account_id === 'string'
+      ? (auth as { chatgpt_account_id: string }).chatgpt_account_id
+      : undefined
+  } catch {
+    return undefined
   }
 }
 

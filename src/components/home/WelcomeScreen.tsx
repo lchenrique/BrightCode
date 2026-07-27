@@ -40,7 +40,11 @@ export function WelcomeScreen({
    * caller is responsible for creating a task, parking the message
    * for the TaskView to auto-send, and switching the view.
    */
-  onCreateTask: (message: string, selectedModel?: string) => void
+  onCreateTask: (
+    payload: { text: string; images: import('./ChatInput').AttachedImage[] },
+    selectedModel?: string,
+    selectedAccountId?: string,
+  ) => void
 }) {
   const { openSettings } = useSettings()
   const available = useAvailableModels()
@@ -49,6 +53,7 @@ export function WelcomeScreen({
   const activeProject = useActiveProject()
   const hasAnyModel = available.length > 0
   const [selectedModel, setSelectedModel] = useState(readLastSelectedModel)
+  const [selectedAccountId, setSelectedAccountId] = useState<string | undefined>(undefined)
 
   // Grouped model picker data — passed straight to ChatInput in the hero.
   const modelGroups = useMemo<ModelGroup[]>(
@@ -81,12 +86,13 @@ export function WelcomeScreen({
   const handleModelChange = useCallback((model: string) => {
     setSelectedModel(model)
     saveLastSelectedModel(model)
+    setSelectedAccountId(undefined)
   }, [])
 
   const handleCreateTask = useCallback(
-    (message: string) => {
+    (payload: { text: string; images: import('./ChatInput').AttachedImage[] }) => {
       if (selectedModel) saveLastSelectedModel(selectedModel)
-      onCreateTask(message, selectedModel || undefined)
+      onCreateTask(payload, selectedModel || undefined, selectedAccountId)
     },
     [onCreateTask, selectedModel],
   )
@@ -187,3 +193,5 @@ function BrandMark() {
     </svg>
   )
 }
+
+

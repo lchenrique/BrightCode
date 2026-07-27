@@ -27,9 +27,23 @@ function MessageBubbleComponent({
   compact?: boolean
 }) {
   if (message.role === 'user') {
+    const images = (message.contentBlocks ?? [])
+      .filter((b): b is { type: 'image'; data: string; mediaType: string } => b.type === 'image')
     return (
       <div className="flex justify-end">
         <div className="bg-secondary/60 max-w-[85%] rounded-2xl px-4 py-2.5 text-[14px] leading-relaxed">
+          {images.length > 0 && (
+            <div className="mb-2 flex flex-wrap gap-1.5">
+              {images.map((img, i) => (
+                <img
+                  key={i}
+                  src={`data:${img.mediaType};base64,${img.data}`}
+                  alt="attached"
+                  className="border-border/40 size-20 rounded-md border object-cover"
+                />
+              ))}
+            </div>
+          )}
           {message.content}
         </div>
       </div>
@@ -60,9 +74,12 @@ function MessageBubbleComponent({
               {summarizeArgs(tc.name, tc.input)}
             </code>
           )}
-          <span className="ml-auto text-[11px] font-medium">
+          <span
+            className="ml-auto max-w-[40ch] truncate text-[11px] font-medium"
+            title={message.toolError ? summary : undefined}
+          >
             {message.toolError
-              ? 'failed'
+              ? (summary?.replace(/^Error:\s*/i, '') || 'failed')
               : summary && summary.length > 0
                 ? summary
                 : 'ok'}

@@ -99,7 +99,22 @@ function mapMessagesToOpenAI(
       continue
     }
     if (m.role === 'user') {
-      out.push({ role: 'user', content: typeof m.content === 'string' ? m.content : m.content })
+      // Translate the uniform `image` block into OpenAI's `image_url`
+      // content part. Anthropic/Gemini keep their native shapes; this
+      // is the OpenAI-specific shim.
+      const content =
+        typeof m.content === 'string'
+          ? m.content
+          : (m.content as ContentBlock[]).map((b) => {
+              if (b.type === 'image') {
+                return {
+                  type: 'image_url',
+                  image_url: { url: `data:${b.mediaType};base64,${b.data}` },
+                }
+              }
+              return b as unknown as Record<string, unknown>
+            })
+      out.push({ role: 'user', content })
       continue
     }
     if (m.role === 'assistant') {
@@ -423,6 +438,71 @@ export const openaiChatHandler: FormatHandler = {
       { id: string; itemId?: string; name: string; args: string }
     >()
 
+    // ── MiniMax <think> tag parser ──
+    let inThinkBlock = false
+    let contentBuffer = ''
+
+    /** Split accumulated text into thinking_delta and text_delta chunks. */
+    function flushContent(force = false): StreamChunk[] {
+      if (!contentBuffer) return []
+      const chunks: StreamChunk[] = []
+
+      while (contentBuffer.length > 0) {
+        if (!inThinkBlock) {
+          const start = contentBuffer.indexOf('<think>')
+          if (start === -1) {
+            // No think tag — emit all as text (keep trailing partial tag chars
+            // unless this is the final flush at end of stream)
+            let safeEnd = contentBuffer.length
+            if (!force) {
+              for (let i = 1; i <= 6; i++) {
+                if (contentBuffer.endsWith('<think>'.slice(0, i))) {
+                  safeEnd = contentBuffer.length - i
+                  break
+                }
+              }
+            }
+            if (safeEnd > 0) {
+              chunks.push({ type: 'text_delta', text: contentBuffer.slice(0, safeEnd) })
+            }
+            contentBuffer = contentBuffer.slice(safeEnd)
+            break
+          }
+          if (start > 0) {
+            chunks.push({ type: 'text_delta', text: contentBuffer.slice(0, start) })
+          }
+          contentBuffer = contentBuffer.slice(start + 7)
+          inThinkBlock = true
+        } else {
+          const end = contentBuffer.indexOf('</think>')
+          if (end === -1) {
+            // Inside think block, no end tag yet — emit as thinking (keep
+            // trailing partial end-tag chars unless this is the final flush)
+            let safeEnd = contentBuffer.length
+            if (!force) {
+              for (let i = 1; i <= 7; i++) {
+                if (contentBuffer.endsWith('</think>'.slice(0, i))) {
+                  safeEnd = contentBuffer.length - i
+                  break
+                }
+              }
+            }
+            if (safeEnd > 0) {
+              chunks.push({ type: 'thinking_delta', text: contentBuffer.slice(0, safeEnd) })
+            }
+            contentBuffer = contentBuffer.slice(safeEnd)
+            break
+          }
+          if (end > 0) {
+            chunks.push({ type: 'thinking_delta', text: contentBuffer.slice(0, end) })
+          }
+          contentBuffer = contentBuffer.slice(end + 8)
+          inThinkBlock = false
+        }
+      }
+      return chunks
+    }
+
     function toReasoningDelta(eventType: string | undefined, text: string): string {
       if (!text) return ''
 
@@ -630,9 +710,12 @@ export const openaiChatHandler: FormatHandler = {
         out.push({ type: 'thinking_delta', text: reasoningDelta })
       }
 
-      // Text content
+      // Text content — routed through the <think> tag parser so MiniMax
+      // thinking blocks are extracted as thinking_delta instead of text_delta.
       if (typeof delta.content === 'string' && delta.content.length > 0) {
-        out.push({ type: 'text_delta', text: delta.content })
+        contentBuffer += delta.content
+        const contentChunks = flushContent()
+        out.push(...contentChunks)
       }
 
       // Tool call deltas — OpenAI streams them in pieces, so we accumulate
@@ -673,13 +756,17 @@ export const openaiChatHandler: FormatHandler = {
     }
 
     function finalize(): StreamChunk | StreamChunk[] | null {
+      // Flush any remaining buffered content (e.g. partial think tags)
+      const contentChunks = flushContent(true)
+
       const closeChunks = Array.from(toolArgBuffers.values()).map(
         (tool): StreamChunk => ({
           type: 'tool_use_end',
           id: tool.id,
         }),
       )
-      return closeChunks.length > 1 ? closeChunks : (closeChunks[0] ?? null)
+      const all = [...contentChunks, ...closeChunks]
+      return all.length > 1 ? all : (all[0] ?? null)
     }
 
     function emitMessageEnd(): StreamChunk {

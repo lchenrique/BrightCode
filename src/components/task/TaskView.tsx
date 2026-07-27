@@ -19,7 +19,7 @@ export function TaskView({ taskId }: { taskId: string }) {
     return projects.find((item) => item.id === task.projectId) ?? null
   }, [task, projects])
 
-  const [initialMessage] = useState<string | null>(() =>
+  const [initialMessage] = useState(() =>
     tasksStore.peekPendingFirstMessage(taskId) ?? null,
   )
 

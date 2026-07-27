@@ -16,17 +16,19 @@
  *   edit_file(path, old, new)    → { path, replacements }
  *   list_files(path?, recursive?) → Array<{ name, path, isDir }>
  *   search_files(query, path?)   → Array<{ path, line, snippet }>
+ *   bash(command, cwd?, timeoutMs?) → { stdout, stderr, exitCode, durationMs }
+ *                                      (requires user approval per call)
  *
  * Deliberately NOT exposed (yet):
- *   bash       — arbitrary shell exec is a security landmine; needs an
- *                explicit per-call approval UI before we wire it up.
- *   delete     — same: needs confirmation.
+ *   delete     — needs confirmation UI.
  *   network    — not needed yet.
  */
 
 import { promises as fsp, realpathSync } from 'node:fs'
+import { spawn } from 'node:child_process'
+import { randomUUID } from 'node:crypto'
 import path from 'node:path'
-import { ipcMain } from 'electron'
+import { BrowserWindow, ipcMain } from 'electron'
 import { IPC } from '../shared/ipc-channels'
 import { getActiveProject } from './projects'
 import {
@@ -51,6 +53,7 @@ export type ToolName =
   | 'list_skills'
   | 'read_skill'
   | 'read_skill_file'
+  | 'bash'
 
 export type ToolArgs = {
   read_file: { path: string }
@@ -61,6 +64,7 @@ export type ToolArgs = {
   list_skills: { query?: string }
   read_skill: { skill: string }
   read_skill_file: { skill: string; path: string }
+  bash: { command: string; cwd?: string; timeoutMs?: number }
 }
 
 export type ToolExecuteRequest = {
@@ -149,6 +153,8 @@ export async function executeTool(req: ToolExecuteRequest): Promise<ToolResult> 
           args.path ?? '.',
           args.includePattern,
         )
+      case 'bash':
+        return await runBash(project.path, args.command, args.cwd, args.timeoutMs)
     }
   } catch (err) {
     return { ok: false, error: (err as Error).message }
@@ -398,6 +404,205 @@ function globToRegex(pattern: string): RegExp {
 
 // ── IPC registration ───────────────────────────────────────────────────
 
+/**
+ * Pending bash-tool approval requests. Keyed by `approvalId` so the
+ * renderer can answer a specific request even if several are open.
+ * The Promise resolver runs when the renderer sends
+ * `IPC.TOOL_BASH_APPROVAL_RESPOND` with the same `approvalId`.
+ */
+const pendingBashApprovals = new Map<
+  string,
+  { resolve: (approved: boolean) => void; timer: NodeJS.Timeout }
+>()
+
+const BASH_APPROVAL_TIMEOUT_MS = 5 * 60 * 1000
+const BASH_OUTPUT_BYTE_LIMIT = 200_000
+
 export function registerToolsIpc(): void {
   ipcMain.handle(IPC.TOOL_EXECUTE, (_e, req: ToolExecuteRequest) => executeTool(req))
+
+  ipcMain.on(
+    IPC.TOOL_BASH_APPROVAL_RESPOND,
+    (
+      _e,
+      payload: { approvalId: string; approved: boolean; rememberChoice?: boolean },
+    ) => {
+      const pending = pendingBashApprovals.get(payload.approvalId)
+      if (!pending) return
+      pendingBashApprovals.delete(payload.approvalId)
+      clearTimeout(pending.timer)
+      pending.resolve(payload.approved === true)
+    },
+  )
+}
+
+/**
+ * Send an approval request to the renderer and await the response.
+ * Returns `false` if the user denies, the timeout elapses, or no
+ * window is open to show the modal.
+ */
+function requestBashApproval(
+  approvalId: string,
+  command: string,
+  workdir: string,
+  timeoutMs: number,
+): Promise<boolean> {
+  return new Promise((resolve) => {
+    const window = BrowserWindow.getAllWindows()[0]
+    if (!window || window.isDestroyed()) {
+      resolve(false)
+      return
+    }
+    const timer = setTimeout(() => {
+      if (pendingBashApprovals.has(approvalId)) {
+        pendingBashApprovals.delete(approvalId)
+        resolve(false)
+      }
+    }, BASH_APPROVAL_TIMEOUT_MS)
+    pendingBashApprovals.set(approvalId, { resolve, timer })
+    window.webContents.send(IPC.TOOL_BASH_APPROVAL_REQUEST, {
+      approvalId,
+      command,
+      workdir,
+      timeoutMs,
+    })
+  })
+}
+
+async function runBash(
+  projectRoot: string,
+  command: string,
+  cwdRel: string | undefined,
+  timeoutMs: number | undefined,
+): Promise<ToolResult<{ stdout: string; stderr: string; exitCode: number; durationMs: number }>> {
+  if (!command || typeof command !== 'string' || !command.trim()) {
+    return { ok: false, error: 'command is required' }
+  }
+  if (command.length > 8_000) {
+    return { ok: false, error: 'command is too long (max 8000 chars)' }
+  }
+
+  // Resolve the workdir against the project sandbox. Falls back to the
+  // project root if `cwd` is omitted.
+  const workdir = cwdRel
+    ? resolveInProject(projectRoot, cwdRel)
+    : projectRoot
+
+  const approvalId = randomUUID()
+  const approved = await requestBashApproval(
+    approvalId,
+    command,
+    workdir,
+    timeoutMs ?? 60_000,
+  )
+  if (!approved) {
+    return { ok: false, error: 'User denied the command. Ask before retrying.' }
+  }
+
+  // Hard cap the user-supplied timeout.
+  const effectiveTimeout = Math.max(1_000, Math.min(timeoutMs ?? 60_000, 5 * 60_000))
+
+  return await new Promise((resolve) => {
+    const startedAt = Date.now()
+    // shell: true so pipes, redirects, and chained commands work.
+    // The user has already approved the exact command — that approval
+    // is the authorization layer. We do NOT scan the command here.
+    const child = spawn(command, {
+      cwd: workdir,
+      shell: true,
+      windowsHide: true,
+      env: { ...process.env, BRIGHTCODE_TOOL: 'bash' },
+    })
+
+    let stdout = ''
+    let stderr = ''
+    let stdoutBytes = 0
+    let stderrBytes = 0
+    let truncated = false
+    let settled = false
+
+    const finish = (payload: ToolResult<{
+      stdout: string
+      stderr: string
+      exitCode: number
+      durationMs: number
+    }>) => {
+      if (settled) return
+      settled = true
+      clearTimeout(killTimer)
+      resolve(payload)
+    }
+
+    const killTimer = setTimeout(() => {
+      try {
+        child.kill('SIGKILL')
+      } catch {
+        // ignore
+      }
+      finish({
+        ok: false,
+        error: `Command exceeded timeout (${effectiveTimeout}ms) and was killed.`,
+      })
+    }, effectiveTimeout)
+
+    child.stdout?.on('data', (chunk: Buffer) => {
+      stdoutBytes += chunk.length
+      if (stdoutBytes <= BASH_OUTPUT_BYTE_LIMIT) {
+        stdout += chunk.toString('utf-8')
+      } else if (!truncated) {
+        truncated = true
+        stdout += `\n\n[stdout truncated at ${BASH_OUTPUT_BYTE_LIMIT} bytes]`
+      }
+    })
+    child.stderr?.on('data', (chunk: Buffer) => {
+      stderrBytes += chunk.length
+      if (stderrBytes <= BASH_OUTPUT_BYTE_LIMIT) {
+        stderr += chunk.toString('utf-8')
+      } else if (!truncated) {
+        truncated = true
+        stderr += `\n\n[stderr truncated at ${BASH_OUTPUT_BYTE_LIMIT} bytes]`
+      }
+    })
+
+    child.on('error', (err) => {
+      finish({ ok: false, error: `Failed to start command: ${err.message}` })
+    })
+    child.on('close', (code, signal) => {
+      const exitCode = typeof code === 'number' ? code : signal ? 128 + (signal as unknown as number) : -1
+      const durationMs = Date.now() - startedAt
+      if (signal === 'SIGKILL' && settled) {
+        // already finished by killTimer
+        return
+      }
+      const payload: ToolResult<{
+        stdout: string
+        stderr: string
+        exitCode: number
+        durationMs: number
+      }> =
+        exitCode === 0
+          ? { ok: true, result: { stdout, stderr, exitCode, durationMs } }
+          : {
+              ok: false,
+              error: `Command exited with code ${exitCode}`,
+              // Keep the captured output so the model can see what went wrong.
+            }
+      // Note: ToolResult's `error` variant is `{ ok: false; error: string }`
+      // (no `result`). The model still gets the captured streams via the
+      // `result` field when we report success. For non-zero exit, we keep
+      // the error short and the model can re-run with a different command
+      // if it needs the failed output verbatim.
+      if (exitCode !== 0) {
+        finish({
+          ok: false,
+          error: `Command exited with code ${exitCode}. stderr:\n${stderr.slice(
+            0,
+            4000,
+          )}\n\nstdout:\n${stdout.slice(0, 4000)}`,
+        })
+        return
+      }
+      finish(payload)
+    })
+  })
 }

@@ -7,6 +7,71 @@
 
 import type { ModelInfo } from './types'
 
+// MiniMax native OpenAI-compatible API (https://api.minimax.io/v1).
+// The model ids intentionally match the upstream API exactly.
+export const minimaxModels: ModelInfo[] = [
+  {
+    id: 'MiniMax-M2.7',
+    displayName: 'MiniMax M2.7',
+    provider: 'minimax',
+    contextWindow: 204_800,
+    supportsTools: true,
+    supportsThinking: true,
+    inputCost: 0.3,
+    outputCost: 1.2,
+  },
+  {
+    id: 'MiniMax-M2.7-highspeed',
+    displayName: 'MiniMax M2.7 Highspeed',
+    provider: 'minimax',
+    contextWindow: 204_800,
+    supportsTools: true,
+    supportsThinking: true,
+    inputCost: 0.3,
+    outputCost: 1.2,
+  },
+  {
+    id: 'MiniMax-M2.5',
+    displayName: 'MiniMax M2.5',
+    provider: 'minimax',
+    contextWindow: 204_800,
+    supportsTools: true,
+    supportsThinking: true,
+    inputCost: 0.3,
+    outputCost: 1.2,
+  },
+  {
+    id: 'MiniMax-M2.5-highspeed',
+    displayName: 'MiniMax M2.5 Highspeed',
+    provider: 'minimax',
+    contextWindow: 204_800,
+    supportsTools: true,
+    supportsThinking: true,
+    inputCost: 0.3,
+    outputCost: 1.2,
+  },
+  {
+    id: 'MiniMax-M2.1',
+    displayName: 'MiniMax M2.1',
+    provider: 'minimax',
+    contextWindow: 204_800,
+    supportsTools: true,
+    supportsThinking: true,
+    inputCost: 0.3,
+    outputCost: 1.2,
+  },
+  {
+    id: 'MiniMax-M3',
+    displayName: 'MiniMax M3',
+    provider: 'minimax',
+    contextWindow: 200_000,
+    supportsTools: true,
+    supportsThinking: true,
+    inputCost: 0.3,
+    outputCost: 1.2,
+  },
+]
+
 // ─── OpenAI ─────────────────────────────────────────────────────────────
 // Native OpenAI API. Catalog cross-referenced with
 // https://platform.openai.com/docs/models (last verified 2026-07-24).
@@ -45,66 +110,6 @@ export const openaiModels: ModelInfo[] = [
     supportsImages: true,
     inputCost: 0.25,
     outputCost: 2.0,
-  },
-  {
-    id: 'gpt-5.5',
-    displayName: 'GPT 5.5',
-    provider: 'openai',
-    contextWindow: 400_000,
-    supportsTools: true,
-    supportsThinking: true,
-    supportsImages: true,
-    inputCost: 1.5,
-    outputCost: 12.0,
-  },
-  {
-    id: 'gpt-5.4',
-    displayName: 'GPT 5.4',
-    provider: 'openai',
-    contextWindow: 200_000,
-    supportsTools: true,
-    supportsThinking: true,
-    inputCost: 1.0,
-    outputCost: 8.0,
-  },
-  {
-    id: 'gpt-5.4-mini',
-    displayName: 'GPT 5.4 mini',
-    provider: 'openai',
-    contextWindow: 200_000,
-    supportsTools: true,
-    supportsThinking: true,
-    inputCost: 0.2,
-    outputCost: 1.5,
-  },
-  {
-    id: 'gpt-4o',
-    displayName: 'GPT 4o',
-    provider: 'openai',
-    contextWindow: 128_000,
-    supportsTools: true,
-    supportsImages: true,
-    inputCost: 2.5,
-    outputCost: 10.0,
-  },
-  {
-    id: 'o3',
-    displayName: 'o3',
-    provider: 'openai',
-    contextWindow: 200_000,
-    supportsTools: true,
-    supportsThinking: true,
-    inputCost: 10.0,
-    outputCost: 40.0,
-  },
-  {
-    id: 'o1',
-    displayName: 'o1',
-    provider: 'openai',
-    contextWindow: 200_000,
-    supportsThinking: true,
-    inputCost: 15.0,
-    outputCost: 60.0,
   },
 ]
 
@@ -224,22 +229,6 @@ export const opencodeZenModels: ModelInfo[] = [
   { id: 'gpt-5.6-sol', displayName: 'GPT 5.6 Sol', provider: 'opencode-zen', contextWindow: 272_000, supportsTools: true, supportsThinking: true, inputCost: 5.0, outputCost: 30.0 },
   { id: 'gpt-5.6-terra', displayName: 'GPT 5.6 Terra', provider: 'opencode-zen', contextWindow: 272_000, supportsTools: true, supportsThinking: true, inputCost: 2.5, outputCost: 15.0 },
   { id: 'gpt-5.6-luna', displayName: 'GPT 5.6 Luna', provider: 'opencode-zen', contextWindow: 272_000, supportsTools: true, inputCost: 1.0, outputCost: 6.0 },
-  { id: 'gpt-5.5', displayName: 'GPT 5.5', provider: 'opencode-zen', contextWindow: 272_000, supportsTools: true, supportsThinking: true, inputCost: 5.0, outputCost: 30.0 },
-  { id: 'gpt-5.5-pro', displayName: 'GPT 5.5 Pro', provider: 'opencode-zen', contextWindow: 272_000, supportsTools: true, supportsThinking: true, inputCost: 30.0, outputCost: 180.0 },
-  { id: 'gpt-5.4', displayName: 'GPT 5.4', provider: 'opencode-zen', contextWindow: 272_000, supportsTools: true, supportsThinking: true, inputCost: 2.5, outputCost: 15.0 },
-  { id: 'gpt-5.4-pro', displayName: 'GPT 5.4 Pro', provider: 'opencode-zen', contextWindow: 272_000, supportsTools: true, supportsThinking: true, inputCost: 30.0, outputCost: 180.0 },
-  { id: 'gpt-5.4-mini', displayName: 'GPT 5.4 mini', provider: 'opencode-zen', supportsTools: true, inputCost: 0.75, outputCost: 4.5 },
-  { id: 'gpt-5.4-nano', displayName: 'GPT 5.4 nano', provider: 'opencode-zen', supportsTools: true, inputCost: 0.2, outputCost: 1.25 },
-  { id: 'gpt-5.3-codex', displayName: 'GPT 5.3 Codex', provider: 'opencode-zen', supportsTools: true, inputCost: 1.75, outputCost: 14.0 },
-  { id: 'gpt-5.3-codex-spark', displayName: 'GPT 5.3 Codex Spark', provider: 'opencode-zen', supportsTools: true, inputCost: 1.75, outputCost: 14.0 },
-  { id: 'gpt-5.2', displayName: 'GPT 5.2', provider: 'opencode-zen', supportsTools: true, inputCost: 1.75, outputCost: 14.0 },
-  { id: 'gpt-5.2-codex', displayName: 'GPT 5.2 Codex', provider: 'opencode-zen', supportsTools: true, inputCost: 1.75, outputCost: 14.0 },
-  { id: 'gpt-5.1', displayName: 'GPT 5.1', provider: 'opencode-zen', supportsTools: true, inputCost: 1.07, outputCost: 8.5 },
-  { id: 'gpt-5.1-codex', displayName: 'GPT 5.1 Codex', provider: 'opencode-zen', supportsTools: true, inputCost: 1.07, outputCost: 8.5 },
-  { id: 'gpt-5.1-codex-max', displayName: 'GPT 5.1 Codex Max', provider: 'opencode-zen', supportsTools: true, inputCost: 1.25, outputCost: 10.0 },
-  { id: 'gpt-5.1-codex-mini', displayName: 'GPT 5.1 Codex Mini', provider: 'opencode-zen', supportsTools: true, inputCost: 0.25, outputCost: 2.0 },
-  { id: 'gpt-5-codex', displayName: 'GPT 5 Codex', provider: 'opencode-zen', supportsTools: true, inputCost: 1.07, outputCost: 8.5 },
-  { id: 'gpt-5-nano', displayName: 'GPT 5 Nano', provider: 'opencode-zen', supportsTools: true, inputCost: 0.05, outputCost: 0.4 },
 
   // Claude family
   { id: 'claude-fable-5', displayName: 'Claude Fable 5', provider: 'opencode-zen', contextWindow: 200_000, supportsTools: true, inputCost: 10.0, outputCost: 50.0 },
@@ -316,6 +305,7 @@ export const opencodeGoModels: ModelInfo[] = [
   { id: 'qwen3.5-plus', displayName: 'Qwen 3.5 Plus', provider: 'opencode-go', supportsTools: true, inputCost: 0.2, outputCost: 1.2 },
   // xAI
   { id: 'grok-4.5', displayName: 'Grok 4.5', provider: 'opencode-go', contextWindow: 500_000, supportsTools: true, inputCost: 2.0, outputCost: 6.0 },
+  { id: 'minimax-m3', displayName: 'MiniMax M3', provider: 'opencode-go', contextWindow: 200_000, supportsTools: true, inputCost: 0.3, outputCost: 1.2 },
 ]
 
 // ── Gemini Generative Language API ──────────────────────────────────────
