@@ -23,8 +23,11 @@ export interface AgentPreset {
   content: string
   /** Tool ids the agent should be allowed to call. */
   tools: string[]
-  /** Optional emoji shown in the picker chip. */
-  emoji?: string
+  /**
+   * Deterministic seed for the DiceBear bottts avatar. Defaults to the
+   * preset id when omitted so every preset has a stable face.
+   */
+  avatarSeed?: string
 }
 
 /**
@@ -80,15 +83,15 @@ const PRESET_TOOLS: Record<string, string[]> = {
   'product-manager': ['read_file', 'search_files', 'list_files'],
 }
 
-const PRESET_EMOJI: Record<string, string> = {
-  'backend-architect': '🏛️',
-  'frontend-react': '🎨',
-  reviewer: '🔎',
-  'api-tester': '🧪',
-  planner: '🗺️',
-  'git-workflow-master': '🌿',
-  'reality-checker': '🧐',
-  'product-manager': '📋',
+const PRESET_AVATAR_SEED: Record<string, string> = {
+  'backend-architect': 'preset-backend-architect',
+  'frontend-react': 'preset-frontend-react',
+  reviewer: 'preset-reviewer',
+  'api-tester': 'preset-api-tester',
+  planner: 'preset-planner',
+  'git-workflow-master': 'preset-git-workflow',
+  'reality-checker': 'preset-reality-checker',
+  'product-manager': 'preset-product-manager',
 }
 
 const rawFiles = import.meta.glob('/agents/presets/*.md', {
@@ -115,7 +118,7 @@ export const AGENT_PRESETS: AgentPreset[] = Object.entries(rawFiles)
       fileName,
       content,
       tools: PRESET_TOOLS[id] ?? [...DEFAULT_TOOLS],
-      emoji: PRESET_EMOJI[id],
+      avatarSeed: PRESET_AVATAR_SEED[id] ?? `preset-${id}`,
     }
   })
   .sort((a, b) => a.name.localeCompare(b.name))

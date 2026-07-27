@@ -26,6 +26,7 @@ import {
   FileText,
   FolderOpen,
   Search,
+  Shuffle,
   X,
 } from 'lucide-react'
 import {
@@ -43,12 +44,15 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from '@/components/ui/popover'
+import {
+  AgentAvatar,
+  AVATAR_PICKER_SEEDS,
+  avatarSvg,
+} from '@/components/ui/agent-avatar'
 import { agentStore } from '@/lib/agents'
 import { AGENT_PRESETS, type AgentPreset } from '@/lib/agents/presets'
 import { useAvailableModelsGrouped, useDefaultModel } from '@/hooks/use-provider-registry'
 import { cn } from '@/lib/utils'
-
-const EMOJIS = ['🎨', '🛠️', '🧪', '📋', '🔧', '🚀', '🖥️', '🎯', '💡', '🔍', '🧠', '⚡']
 
 const NAME_MAX = 20
 const DESCRIPTION_MAX = 100
@@ -114,11 +118,11 @@ export function CreateAgentDialog({
 
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
-  const [emoji, setEmoji] = useState(EMOJIS[0])
+  const [avatarSeed, setAvatarSeed] = useState(AVATAR_PICKER_SEEDS[0])
   const [systemPrompt, setSystemPrompt] = useState('')
   const [selectedModel, setSelectedModel] = useState(defaultModelId)
 
-  const [emojiOpen, setEmojiOpen] = useState(false)
+  const [avatarOpen, setAvatarOpen] = useState(false)
 
   const allModels = useMemo(
     () =>
@@ -163,8 +167,8 @@ export function CreateAgentDialog({
     if (!systemPrompt.trim()) {
       setSystemPrompt(preset.content)
     }
-    if (preset.emoji && EMOJIS.includes(preset.emoji)) {
-      setEmoji(preset.emoji)
+    if (preset.avatarSeed) {
+      setAvatarSeed(preset.avatarSeed)
     }
     setPickerOpen(false)
     setPickerSearch('')
@@ -222,7 +226,7 @@ export function CreateAgentDialog({
     setPickerSearch('')
     setName('')
     setDescription('')
-    setEmoji(EMOJIS[0])
+    setAvatarSeed(AVATAR_PICKER_SEEDS[0])
     setSystemPrompt('')
     setSelectedModel(defaultModelId)
   }
@@ -235,7 +239,7 @@ export function CreateAgentDialog({
       : ['read_file', 'write_file', 'search_files', 'edit_file']
     void agentStore.add({
       name: trimmed,
-      emoji,
+      avatarSeed,
       description: description.trim(),
       systemPrompt: systemPrompt.trim(),
       model: selectedModel,
@@ -368,9 +372,11 @@ export function CreateAgentDialog({
                               active && 'bg-accent',
                             )}
                           >
-                            <span className="text-base leading-none">
-                              {preset.emoji ?? '📄'}
-                            </span>
+                            <AgentAvatar
+                              seed={preset.avatarSeed ?? preset.id}
+                              size={18}
+                              className="ring-0"
+                            />
                             <span className="flex-1">
                               <span className="text-foreground/90 block font-medium">
                                 {preset.name}
@@ -402,41 +408,70 @@ export function CreateAgentDialog({
 
           {/* ── Shared form (always visible) ──────────────────────────── */}
           <div className="mt-4 flex flex-col gap-4 border-t pt-4">
-            {/* Emoji + Name in a single row */}
+            {/* Avatar + Name in a single row */}
             <div className="flex items-start gap-3">
               <div>
                 <span className="text-muted-foreground mb-2 block text-[12px] font-medium">
-                  Icon
+                  Avatar
                 </span>
                 <div className="relative">
                   <button
                     type="button"
-                    className="bg-secondary ring-border/60 hover:ring-ring/60 flex size-10 items-center justify-center rounded-full text-lg ring-1 transition-shadow"
-                    onClick={() => setEmojiOpen((o) => !o)}
-                    aria-label="Pick agent icon"
+                    className="ring-border/60 hover:ring-ring/60 flex size-10 items-center justify-center overflow-hidden rounded-full bg-secondary ring-1 transition-shadow"
+                    onClick={() => setAvatarOpen((o) => !o)}
+                    aria-label="Pick agent avatar"
                   >
-                    {emoji}
+                    <span
+                      className="block size-10"
+                      dangerouslySetInnerHTML={{ __html: avatarSvg(avatarSeed, 40) }}
+                    />
                   </button>
-                  {emojiOpen && (
-                    <div className="bg-popover ring-border/60 absolute top-12 left-0 z-50 grid w-52 grid-cols-4 gap-1 rounded-lg p-2 ring-1 shadow-lg">
-                      {EMOJIS.map((e) => (
+                  {avatarOpen && (
+                    <div className="bg-popover ring-border/60 absolute top-12 left-0 z-50 w-60 rounded-lg p-2 ring-1 shadow-lg">
+                      <div className="mb-2 flex items-center justify-between px-1">
+                        <span className="text-muted-foreground text-[11px] font-medium">
+                          Pick an avatar
+                        </span>
                         <button
-                          key={e}
                           type="button"
-                          className={cn(
-                            'flex size-10 items-center justify-center rounded-lg text-lg transition-colors',
-                            e === emoji
-                              ? 'bg-primary/20 ring-primary/40 ring-1'
-                              : 'hover:bg-accent',
-                          )}
                           onClick={() => {
-                            setEmoji(e)
-                            setEmojiOpen(false)
+                            const next =
+                              AVATAR_PICKER_SEEDS[
+                                Math.floor(Math.random() * AVATAR_PICKER_SEEDS.length)
+                              ]
+                            setAvatarSeed(next)
                           }}
+                          className="text-muted-foreground hover:text-foreground inline-flex items-center gap-1 text-[11px]"
+                          aria-label="Shuffle avatar"
                         >
-                          {e}
+                          <Shuffle className="size-3" />
+                          Shuffle
                         </button>
-                      ))}
+                      </div>
+                      <div className="grid grid-cols-4 gap-1.5">
+                        {AVATAR_PICKER_SEEDS.map((seed) => (
+                          <button
+                            key={seed}
+                            type="button"
+                            className={cn(
+                              'flex size-12 items-center justify-center overflow-hidden rounded-md ring-1 transition-colors',
+                              seed === avatarSeed
+                                ? 'bg-primary/20 ring-primary/60'
+                                : 'ring-border/40 hover:bg-accent',
+                            )}
+                            onClick={() => {
+                              setAvatarSeed(seed)
+                              setAvatarOpen(false)
+                            }}
+                            aria-label={`Use avatar ${seed}`}
+                          >
+                            <span
+                              className="block size-12"
+                              dangerouslySetInnerHTML={{ __html: avatarSvg(seed, 48) }}
+                            />
+                          </button>
+                        ))}
+                      </div>
                     </div>
                   )}
                 </div>

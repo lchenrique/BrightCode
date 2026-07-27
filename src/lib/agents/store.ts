@@ -15,7 +15,12 @@
 export interface AgentDefinition {
   id: string
   name: string
-  emoji: string
+  /**
+   * Deterministic seed for the DiceBear bottts avatar. Same seed renders
+   * the same robot, so we can use the agent name as a stable seed without
+   * storing image data.
+   */
+  avatarSeed: string
   description: string
   systemPrompt: string
   model: string
@@ -40,13 +45,35 @@ function now(): number {
 
 // ── Browser (localStorage) backend ───────────────────────────────────────
 
+/**
+ * Backfill `avatarSeed` for older records that were stored before the
+ * emoji → avatar migration. Anything that already has `avatarSeed` is
+ * left alone. The seed is just used by DiceBear, so any non-empty
+ * string is fine — falling back to the agent name keeps the avatar
+ * stable per persona.
+ */
+function migrate(record: Record<string, unknown>): AgentDefinition {
+  const r = record as Partial<AgentDefinition> & { emoji?: string }
+  if (!r.avatarSeed) {
+    r.avatarSeed = r.emoji && r.emoji.length > 0 ? r.emoji : (r.name ?? 'agent')
+  }
+  delete (r as { emoji?: string }).emoji
+  return r as AgentDefinition
+}
+
 function readLocal(): Record<string, AgentDefinition> {
   if (typeof localStorage === 'undefined') return {}
   try {
     const raw = localStorage.getItem(STORAGE_KEY)
     if (raw) {
       const parsed = JSON.parse(raw)
-      return typeof parsed === 'object' && parsed !== null ? parsed : {}
+      if (typeof parsed === 'object' && parsed !== null) {
+        const out: Record<string, AgentDefinition> = {}
+        for (const [k, v] of Object.entries(parsed)) {
+          if (v && typeof v === 'object') out[k] = migrate(v as Record<string, unknown>)
+        }
+        return out
+      }
     }
     return {}
   } catch {
@@ -132,7 +159,7 @@ const electronBackend = (() => {
       const list = await api.list()
       cache = {}
       for (const agent of list) {
-        cache[agent.id] = agent
+        cache[agent.id] = migrate(agent as unknown as Record<string, unknown>)
       }
       hydrated = true
     })()

@@ -30,7 +30,7 @@ import { SkillsView } from '@/components/skills/SkillsView'
 type View =
   | { kind: 'welcome' }
   | { kind: 'task'; id: string }
-  | { kind: 'agent'; name: string; emoji: string }
+  | { kind: 'agent'; name: string; avatarSeed: string }
   | { kind: 'skills' }
 
 /** Resizable sidebar width (rem), persisted across sessions. */
@@ -59,7 +59,7 @@ export function AppShell() {
   const [createAgentOpen, setCreateAgentOpen] = useState(false)
   const [agentSettings, setAgentSettings] = useState<{
     name: string
-    emoji: string
+    avatarSeed: string
   } | null>(null)
   const [sidebarWidth, setSidebarWidth] = useState(getInitialSidebarWidth)
   const activeProject = useActiveProject()
@@ -155,12 +155,12 @@ export function AppShell() {
             setView({ kind: 'task', id })
           }}
           onSelectAgent={(agent) =>
-            setView({ kind: 'agent', name: agent.name, emoji: agent.emoji })
+            setView({ kind: 'agent', name: agent.name, avatarSeed: agent.avatarSeed })
           }
           onOpenSettings={() => setSettingsOpen(true)}
           onOpenCreateAgent={() => setCreateAgentOpen(true)}
           onOpenAgentSettings={(agent) =>
-            setAgentSettings({ name: agent.name, emoji: agent.emoji })
+            setAgentSettings({ name: agent.name, avatarSeed: agent.avatarSeed })
           }
           onSidebarResize={handleSidebarResize}
         />
@@ -171,7 +171,7 @@ export function AppShell() {
           )}
           {view.kind === 'task' && <TaskView key={view.id} taskId={view.id} />}
           {view.kind === 'agent' && (
-            <AgentView key={view.name} agentName={view.name} emoji={view.emoji} />
+            <AgentView key={view.name} agentName={view.name} avatarSeed={view.avatarSeed} />
           )}
           {view.kind === 'skills' && <SkillsView />}
         </main>
@@ -216,7 +216,7 @@ export function AppShell() {
             if (!open) setAgentSettings(null)
           }}
           agentName={agentSettings.name}
-          emoji={agentSettings.emoji}
+          avatarSeed={agentSettings.avatarSeed}
         />
       )}
       <BashApprovalDialog />

@@ -25,12 +25,12 @@ export function AgentSettingDialog({
   open,
   onOpenChange,
   agentName,
-  emoji,
+  avatarSeed,
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
   agentName: string
-  emoji: string
+  avatarSeed: string
 }) {
   const [tab, setTab] = useState<NavId>('profile')
   const [name, setName] = useState(agentName)

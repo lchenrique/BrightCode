@@ -1233,7 +1233,7 @@ export function ChatSurface({
               toolCalls: [{ id: tc.id, name: tc.name, input: tc.input }],
               isAgentResult: true,
               agentName: agent.name,
-              agentEmoji: agent.emoji,
+              agentAvatarSeed: agent.avatarSeed,
             }
 
             return {

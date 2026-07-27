@@ -7,16 +7,16 @@ import { agentStore } from '@/lib/agents'
 
 export function AgentView({
   agentName,
-  emoji,
+  avatarSeed,
 }: {
   agentName: string
-  emoji: string
+  avatarSeed: string
 }) {
   const [progressOpen, setProgressOpen] = useState(true)
 
   const agent = agentStore
     .list()
-    .find((a) => a.name === agentName && a.emoji === emoji)
+    .find((a) => a.name === agentName && a.avatarSeed === avatarSeed)
 
   if (!agent) {
     return (

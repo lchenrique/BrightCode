@@ -73,7 +73,7 @@ function pickColor(id: string): AgentColor {
   return COLORS[Math.abs(hash) % COLORS.length]!
 }
 
-type Agent = Pick<AgentDefinition, 'id' | 'name' | 'emoji'> & { color: AgentColor }
+type Agent = Pick<AgentDefinition, 'id' | 'name' | 'avatarSeed'> & { color: AgentColor }
 
 function useAgents(): Agent[] {
   const cacheRef = useRef<Agent[]>([])
@@ -88,7 +88,7 @@ function useAgents(): Agent[] {
       .map((a) => ({
         id: a.id,
         name: a.name,
-        emoji: a.emoji,
+        avatarSeed: a.avatarSeed,
         color: pickColor(a.id),
       }))
     const prev = cacheRef.current
@@ -542,7 +542,7 @@ function AgentRow({
           className="text-foreground/80"
           onClick={onSelect}
         >
-          <TeamAvatar emoji={agent.emoji} color={agent.color} />
+          <TeamAvatar seed={agent.avatarSeed} color={agent.color} />
           <span className="text-[13px]">{agent.name}</span>
         </SidebarMenuButton>
 
