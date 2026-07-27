@@ -4,13 +4,13 @@
  *
  *   Thought 1 time(s), Used 1 tool(s)  ▸
  *   ┌─────────────────────────────────────────────────────┐
- *   │  </> Write File    ToolTimeline.tsx                 │
- *   │  🧠 Thinking process                                     │
- *   │  >_ Terminal       Get-ChildItem "..."                │
- *   │                                                         │
- *   │  Optional free-form assistant text                     │
- *   │  ─────────────────                                       │
- *   │  🤖 Filling in step by step...                          │
+ *   │  Write File      ToolTimeline.tsx                     │
+ *   │  Thinking process                                     │
+ *   │  Terminal        Get-ChildItem "..."                  │
+ *   │                                                     │
+ *   │  Optional free-form assistant text                   │
+ *   │  ─────────────────                                   │
+ *   │  Filling in step by step...                          │
  *   └─────────────────────────────────────────────────────┘
  *
  * Header starts collapsed (matches MiniMax Code default). The body
@@ -120,7 +120,7 @@ function AssistantTurnComponent({
       pending: streaming && !result,
       isAgentResult: result?.isAgentResult,
       agentName: result?.agentName,
-      agentEmoji: result?.agentEmoji,
+      agentAvatarSeed: result?.agentAvatarSeed,
     }
   })
 

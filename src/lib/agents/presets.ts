@@ -9,7 +9,7 @@
  *
  * The markdown is shown to the user in the CreateAgentDialog as a
  * starting point. The user can edit the description, system prompt,
- * emoji, and model before saving.
+ * avatar (DiceBear seed), and model before saving.
  */
 
 export interface AgentPreset {
@@ -103,8 +103,9 @@ const rawFiles = import.meta.glob('/agents/presets/*.md', {
 function extractNameFromMarkdown(content: string, fallback: string): string {
   const match = content.match(/^#\s+(.+?)\s*$/m)
   if (!match) return fallback
-  // Strip a leading emoji + optional whitespace so sorting is alphabetical
-  // by the actual persona name (otherwise 🧭 Product Manager sorts under 🧭).
+  // Strip a leading pictographic symbol (emoji) so sorting is
+  // alphabetical by the persona name. The 8 OpenCode presets have an
+  // emoji before the name in their H1 (e.g. `# 🧭 Product Manager Agent`).
   return match[1]!.replace(/^[\p{Extended_Pictographic}\p{Emoji_Component}]+\s*/u, '').trim()
 }
 

@@ -56,13 +56,12 @@ export const AVATAR_PICKER_SEEDS = [
   'agent-mist',
 ] as const
 
-export function avatarSvg(seed: string, size = 64): string {
+export function avatarSvg(seed: string, _size = 64): string {
   return createAvatar(bottts, {
     seed,
     backgroundType: ['solid'],
     backgroundColor: [PALETTE[Math.abs(hash(seed)) % PALETTE.length]],
     radius: 50,
-    padding: 0,
     scale: 92,
   }).toString()
 }

@@ -118,7 +118,7 @@ export function CreateAgentDialog({
 
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
-  const [avatarSeed, setAvatarSeed] = useState(AVATAR_PICKER_SEEDS[0])
+  const [avatarSeed, setAvatarSeed] = useState<string>(AVATAR_PICKER_SEEDS[0])
   const [systemPrompt, setSystemPrompt] = useState('')
   const [selectedModel, setSelectedModel] = useState(defaultModelId)
 

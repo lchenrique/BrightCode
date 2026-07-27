@@ -47,8 +47,8 @@ export interface Message {
   isAgentResult?: boolean
   /** The display name of the agent that produced this result. */
   agentName?: string
-  /** Emoji associated with the agent. */
-  agentEmoji?: string
+  /** DiceBear avatar seed of the agent. */
+  agentAvatarSeed?: string
 }
 
 /**

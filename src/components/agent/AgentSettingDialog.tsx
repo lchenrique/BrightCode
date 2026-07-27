@@ -9,6 +9,7 @@ import {
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
+import { avatarSvg } from '@/components/ui/agent-avatar'
 import { cn } from '@/lib/utils'
 
 const NAME_MAX = 20
@@ -79,15 +80,18 @@ export function AgentSettingDialog({
                 {/* Icon preview */}
                 <div>
                   <span className="text-muted-foreground mb-2 block text-[12px] font-medium">
-                    Icon
+                    Avatar
                   </span>
                   <button
                     type="button"
-                    className="bg-secondary ring-border/60 hover:ring-ring/60 flex size-14 items-center justify-center rounded-full text-2xl ring-1 transition-shadow"
-                    onClick={() => console.log('[agent] pick icon')}
-                    aria-label="Pick agent icon"
+                    className="ring-border/60 hover:ring-ring/60 flex size-14 items-center justify-center overflow-hidden rounded-full bg-secondary ring-1 transition-shadow"
+                    onClick={() => console.log('[agent] pick avatar')}
+                    aria-label="Pick agent avatar"
                   >
-                    {emoji}
+                    <span
+                      className="block size-14"
+                      dangerouslySetInnerHTML={{ __html: avatarSvg(avatarSeed, 56) }}
+                    />
                   </button>
                 </div>
 

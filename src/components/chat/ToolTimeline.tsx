@@ -19,6 +19,7 @@ import {
   TerminalSquare,
   Wrench,
 } from 'lucide-react'
+import { AgentAvatar } from '@/components/ui/agent-avatar'
 import { cn } from '@/lib/utils'
 
 export interface ToolTimelineItem {
@@ -35,8 +36,8 @@ export interface ToolTimelineItem {
   isAgentResult?: boolean
   /** Display name of the agent that produced this result. */
   agentName?: string
-  /** Emoji of the agent that produced this result. */
-  agentEmoji?: string
+  /** DiceBear avatar seed of the agent. */
+  agentAvatarSeed?: string
 }
 
 export function ToolTimelineItem({ item }: { item: ToolTimelineItem }) {
@@ -48,9 +49,17 @@ export function ToolTimelineItem({ item }: { item: ToolTimelineItem }) {
           item.errored && 'text-destructive',
         )}
       >
-        <Bot className="text-muted-foreground size-4 shrink-0" />
+        {item.agentAvatarSeed ? (
+          <AgentAvatar
+            seed={item.agentAvatarSeed}
+            size={16}
+            className="ring-0"
+          />
+        ) : (
+          <Bot className="text-muted-foreground size-4 shrink-0" />
+        )}
         <span className="text-foreground/80 shrink-0 text-[12.5px] font-medium">
-          {item.agentEmoji ? `${item.agentEmoji} ` : ''}{item.agentName ?? item.name}
+          {item.agentName ?? item.name}
         </span>
         <span className="text-muted-foreground/60 min-w-0 flex-1 truncate text-[12px]">
           {item.input && typeof item.input === 'object' && 'task' in item.input
