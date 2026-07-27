@@ -21,6 +21,74 @@ export interface AgentPreset {
   fileName: string
   /** Full markdown content. Becomes the default system prompt. */
   content: string
+  /** Tool ids the agent should be allowed to call. */
+  tools: string[]
+  /** Optional emoji shown in the picker chip. */
+  emoji?: string
+}
+
+/**
+ * Default tool set used by the `Custom` source — same as the original
+ * CreateAgentDialog. Presets override this with a tighter set tuned
+ * to the persona.
+ */
+export const DEFAULT_TOOLS = [
+  'read_file',
+  'write_file',
+  'search_files',
+  'edit_file',
+] as const
+
+/**
+ * Per-preset tool allow-list. The picker uses this to scope the agent
+ * to the tools that actually match its persona — a reviewer is
+ * read-only, a git workflow expert can use bash, etc.
+ */
+const PRESET_TOOLS: Record<string, string[]> = {
+  'backend-architect': [
+    'read_file',
+    'write_file',
+    'edit_file',
+    'search_files',
+    'list_files',
+    'bash',
+  ],
+  'frontend-react': [
+    'read_file',
+    'write_file',
+    'edit_file',
+    'search_files',
+    'list_files',
+  ],
+  reviewer: ['read_file', 'search_files', 'list_files'],
+  'api-tester': [
+    'read_file',
+    'write_file',
+    'edit_file',
+    'search_files',
+    'list_files',
+    'bash',
+  ],
+  planner: ['read_file', 'search_files', 'list_files'],
+  'git-workflow-master': [
+    'read_file',
+    'write_file',
+    'edit_file',
+    'bash',
+  ],
+  'reality-checker': ['read_file', 'search_files', 'list_files', 'bash'],
+  'product-manager': ['read_file', 'search_files', 'list_files'],
+}
+
+const PRESET_EMOJI: Record<string, string> = {
+  'backend-architect': '🏛️',
+  'frontend-react': '🎨',
+  reviewer: '🔎',
+  'api-tester': '🧪',
+  planner: '🗺️',
+  'git-workflow-master': '🌿',
+  'reality-checker': '🧐',
+  'product-manager': '📋',
 }
 
 const rawFiles = import.meta.glob('/agents/presets/*.md', {
@@ -31,8 +99,10 @@ const rawFiles = import.meta.glob('/agents/presets/*.md', {
 
 function extractNameFromMarkdown(content: string, fallback: string): string {
   const match = content.match(/^#\s+(.+?)\s*$/m)
-  if (match) return match[1]!.trim()
-  return fallback
+  if (!match) return fallback
+  // Strip a leading emoji + optional whitespace so sorting is alphabetical
+  // by the actual persona name (otherwise 🧭 Product Manager sorts under 🧭).
+  return match[1]!.replace(/^[\p{Extended_Pictographic}\p{Emoji_Component}]+\s*/u, '').trim()
 }
 
 export const AGENT_PRESETS: AgentPreset[] = Object.entries(rawFiles)
@@ -44,6 +114,8 @@ export const AGENT_PRESETS: AgentPreset[] = Object.entries(rawFiles)
       name: extractNameFromMarkdown(content, id),
       fileName,
       content,
+      tools: PRESET_TOOLS[id] ?? [...DEFAULT_TOOLS],
+      emoji: PRESET_EMOJI[id],
     }
   })
   .sort((a, b) => a.name.localeCompare(b.name))

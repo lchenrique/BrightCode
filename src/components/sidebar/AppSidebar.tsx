@@ -30,6 +30,7 @@ import {
   Smartphone,
   Monitor,
   Folder,
+  FolderOpen,
   MoreHorizontal,
   Pin,
   Pencil,
@@ -303,7 +304,11 @@ function ProjectGroup({
           }}
           title={path}
         >
-          <Folder className="text-muted-foreground size-4 shrink-0" />
+          {active ? (
+            <FolderOpen className="text-foreground size-4 shrink-0" />
+          ) : (
+            <Folder className="text-muted-foreground size-4 shrink-0" />
+          )}
           <span className="truncate text-[13px] font-medium">{label}</span>
         </SidebarMenuButton>
 
@@ -443,7 +448,7 @@ function TaskRow({
           className="text-foreground/75 hover:text-foreground data-[active=true]:text-foreground h-7 px-2 text-[12.5px]"
           onClick={onClick}
         >
-          <span className="truncate">{title}</span>
+          <span className={`truncate ${active ? 'task-title-shine' : ''}`}>{title}</span>
         </SidebarMenuButton>
 
         <DropdownMenuTrigger asChild>

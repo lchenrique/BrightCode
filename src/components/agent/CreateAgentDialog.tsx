@@ -1,26 +1,33 @@
 /**
- * CreateAgentDialog — a tabbed modal for adding a new agent.
+ * CreateAgentDialog — a compact modal for adding a new agent.
  *
- * The original layout was a single long form (name, description, system
- * prompt, model, working folder stacked vertically), which got very tall
- * on small windows. The redesign splits the *source* of the agent's
- * instructions from the *identity* of the agent:
+ * Source picker is a single dropdown that lists every bundled preset
+ * (`agents/presets/`) plus a `Custom` option and a `Browse…` shortcut
+ * to seed the system prompt from any markdown file on disk. The
+ * modal is now flat (no tabs) and the form below it is shared across
+ * all sources.
  *
- *   Tab "Preset"   — pick one of the bundled starters in
- *                    `agents/presets/` (Backend, Frontend, ...). The
- *                    markdown is shown in the preview pane; selecting
- *                    a preset pre-fills the description + system prompt.
- *   Tab "From file"— browse for any `.md` on disk via the OS picker.
- *   Tab "Custom"   — write the system prompt yourself from scratch.
+ * Flow:
+ *   1. User picks a preset → the system prompt (and optionally the
+ *      description + name) pre-fills.
+ *   2. User picks `Custom` → all fields start blank.
+ *   3. User picks `Browse…` → OS file picker; the chosen file's
+ *      content goes into the system prompt.
+ *   4. The form is always editable, so the user can tweak a preset
+ *      before saving.
  *
- * The form (name, emoji, description, system prompt, model) is shared
- * across all three tabs. Picking a source only pre-fills the
- * description + system prompt; the user is always free to edit before
- * saving.
+ * The Create button is disabled until both `name` and `systemPrompt`
+ * are non-empty.
  */
 
 import { useMemo, useState } from 'react'
-import { ChevronDown, FileText, FolderOpen, Search } from 'lucide-react'
+import {
+  ChevronDown,
+  FileText,
+  FolderOpen,
+  Search,
+  X,
+} from 'lucide-react'
 import {
   Dialog,
   DialogClose,
@@ -31,7 +38,11 @@ import {
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
-import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover'
 import { agentStore } from '@/lib/agents'
 import { AGENT_PRESETS, type AgentPreset } from '@/lib/agents/presets'
 import { useAvailableModelsGrouped, useDefaultModel } from '@/hooks/use-provider-registry'
@@ -43,10 +54,6 @@ const NAME_MAX = 20
 const DESCRIPTION_MAX = 100
 const PROMPT_MAX = 4000
 
-const DEFAULT_TOOLS = ['read_file', 'write_file', 'search_files', 'edit_file']
-
-type SourceTab = 'preset' | 'file' | 'custom'
-
 function CharCount({ value, max }: { value: string; max: number }) {
   return (
     <span className="text-muted-foreground/70 block pt-1 text-right text-[11px] tabular-nums">
@@ -56,11 +63,10 @@ function CharCount({ value, max }: { value: string; max: number }) {
 }
 
 /**
- * Pull a short description from a markdown body. We use the first
- * non-heading paragraph as the prose, falling back to the first 140
- * characters of the body. This keeps the modal's description column
- * consistent with what's already inside the markdown instead of forcing
- * the user to retype it.
+ * Pull a short description from a markdown body. First non-heading,
+ * non-list, non-empty line wins (capped at DESCRIPTION_MAX chars). This
+ * keeps the modal's description column consistent with what's
+ * already inside the markdown instead of forcing the user to retype.
  */
 function extractDescriptionFromMarkdown(content: string): string {
   const lines = content.split(/\r?\n/)
@@ -75,10 +81,16 @@ function extractDescriptionFromMarkdown(content: string): string {
     if (!trimmed) continue
     if (trimmed.startsWith('#')) continue
     if (trimmed.startsWith('- ')) continue
-    // First prose paragraph after the title.
     return trimmed.slice(0, DESCRIPTION_MAX)
   }
   return content.replace(/\s+/g, ' ').trim().slice(0, DESCRIPTION_MAX)
+}
+
+interface SourceSelection {
+  /** One of `CUSTOM_VALUE`, `BROWSE_VALUE`, or a preset id. */
+  kind: 'preset' | 'custom' | 'browse'
+  presetId?: string
+  filePath?: string
 }
 
 export function CreateAgentDialog({
@@ -95,13 +107,10 @@ export function CreateAgentDialog({
     ? `${defaultModel.provider}/${defaultModel.id}`
     : ''
 
-  const [tab, setTab] = useState<SourceTab>('preset')
-  const [selectedPresetId, setSelectedPresetId] = useState<string | null>(
-    AGENT_PRESETS[0]?.id ?? null,
-  )
-  const [pickedFilePath, setPickedFilePath] = useState<string | null>(null)
+  const [source, setSource] = useState<SourceSelection>({ kind: 'preset' })
   const [pickedFileError, setPickedFileError] = useState<string | null>(null)
-  const [presetSearch, setPresetSearch] = useState('')
+  const [pickerOpen, setPickerOpen] = useState(false)
+  const [pickerSearch, setPickerSearch] = useState('')
 
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
@@ -127,13 +136,13 @@ export function CreateAgentDialog({
     return selectedModel || 'Select model'
   }, [grouped, selectedModel])
 
-  const selectedPreset: AgentPreset | undefined = useMemo(
-    () => AGENT_PRESETS.find((p) => p.id === selectedPresetId),
-    [selectedPresetId],
-  )
+  const selectedPreset: AgentPreset | undefined = useMemo(() => {
+    if (source.kind !== 'preset' || !source.presetId) return undefined
+    return AGENT_PRESETS.find((p) => p.id === source.presetId)
+  }, [source])
 
   const filteredPresets = useMemo(() => {
-    const q = presetSearch.trim().toLowerCase()
+    const q = pickerSearch.trim().toLowerCase()
     if (!q) return AGENT_PRESETS
     return AGENT_PRESETS.filter(
       (p) =>
@@ -141,12 +150,11 @@ export function CreateAgentDialog({
         p.id.toLowerCase().includes(q) ||
         p.content.toLowerCase().includes(q),
     )
-  }, [presetSearch])
+  }, [pickerSearch])
 
   function applyPreset(preset: AgentPreset) {
-    setSelectedPresetId(preset.id)
+    setSource({ kind: 'preset', presetId: preset.id })
     if (!name.trim()) {
-      // Suggest a name from the preset filename. User can edit.
       setName(preset.name.replace(/\s+/g, '-').slice(0, NAME_MAX))
     }
     if (!description.trim()) {
@@ -155,10 +163,22 @@ export function CreateAgentDialog({
     if (!systemPrompt.trim()) {
       setSystemPrompt(preset.content)
     }
+    if (preset.emoji && EMOJIS.includes(preset.emoji)) {
+      setEmoji(preset.emoji)
+    }
+    setPickerOpen(false)
+    setPickerSearch('')
+  }
+
+  function applyCustom() {
+    setSource({ kind: 'custom' })
+    setPickerOpen(false)
+    setPickerSearch('')
   }
 
   async function pickFile() {
     setPickedFileError(null)
+    setPickerOpen(false)
     const api = window.electronAPI?.fs
     if (!api) {
       setPickedFileError('File picker is not available outside Electron.')
@@ -176,13 +196,13 @@ export function CreateAgentDialog({
       setPickedFileError(result.error)
       return
     }
-    if (!result.path) return // user cancelled
-    setPickedFilePath(result.path)
+    if (!result.path) return
     const readResult = await window.electronAPI?.skills?.read(result.path)
     if (!readResult || typeof readResult !== 'string') {
       setPickedFileError('Could not read the chosen file.')
       return
     }
+    setSource({ kind: 'browse', filePath: result.path })
     if (!name.trim()) {
       const fileName = result.path.split(/[\\/]/).pop() ?? 'agent'
       setName(fileName.replace(/\.(md|markdown|mdx|txt)$/i, '').slice(0, NAME_MAX))
@@ -196,11 +216,10 @@ export function CreateAgentDialog({
   }
 
   function reset() {
-    setTab('preset')
-    setSelectedPresetId(AGENT_PRESETS[0]?.id ?? null)
-    setPickedFilePath(null)
+    setSource({ kind: 'preset' })
     setPickedFileError(null)
-    setPresetSearch('')
+    setPickerOpen(false)
+    setPickerSearch('')
     setName('')
     setDescription('')
     setEmoji(EMOJIS[0])
@@ -211,18 +230,34 @@ export function CreateAgentDialog({
   const handleCreate = () => {
     const trimmed = name.trim()
     if (!trimmed) return
+    const tools = selectedPreset
+      ? selectedPreset.tools
+      : ['read_file', 'write_file', 'search_files', 'edit_file']
     void agentStore.add({
       name: trimmed,
       emoji,
       description: description.trim(),
       systemPrompt: systemPrompt.trim(),
       model: selectedModel,
-      tools: DEFAULT_TOOLS,
+      tools,
       enabled: true,
     })
     onOpenChange(false)
     reset()
   }
+
+  const triggerLabel =
+    source.kind === 'preset' && selectedPreset
+      ? selectedPreset.name
+      : source.kind === 'browse'
+        ? source.filePath?.split(/[\\/]/).pop() ?? 'From file…'
+        : 'Custom — start from scratch'
+  const triggerSubLabel =
+    source.kind === 'preset' && selectedPreset
+      ? selectedPreset.fileName
+      : source.kind === 'browse'
+        ? 'Markdown file from disk'
+        : 'No preset — write the prompt yourself'
 
   return (
     <Dialog
@@ -232,108 +267,138 @@ export function CreateAgentDialog({
         onOpenChange(next)
       }}
     >
-      <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto p-0">
+      <DialogContent className="max-w-xl max-h-[85vh] overflow-y-auto p-0">
         <div className="flex items-center justify-between px-5 pt-4 pb-0">
           <DialogTitle>Create Agent</DialogTitle>
           <DialogCloseButton />
         </div>
 
-        <div className="px-5 pb-5 pt-2">
-          <Tabs value={tab} onValueChange={(v) => setTab(v as SourceTab)}>
-            <TabsList>
-              <TabsTrigger value="preset">Preset</TabsTrigger>
-              <TabsTrigger value="file">From file</TabsTrigger>
-              <TabsTrigger value="custom">Custom</TabsTrigger>
-            </TabsList>
-
-            {/* ── Preset tab ─────────────────────────────────────────────── */}
-            <TabsContent value="preset" className="pt-3">
-              {AGENT_PRESETS.length === 0 ? (
-                <p className="text-muted-foreground text-[12.5px]">
-                  No presets bundled. Add a markdown file to{' '}
-                  <code className="bg-muted rounded px-1">agents/presets/</code>{' '}
-                  and rebuild.
-                </p>
-              ) : (
-                <div className="flex flex-col gap-3">
-                  <div className="relative">
-                    <Search className="text-muted-foreground absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2" />
-                    <Input
-                      value={presetSearch}
-                      onChange={(e) => setPresetSearch(e.target.value)}
-                      placeholder="Search presets…"
-                      className="bg-secondary/40 border-border/60 h-8 pl-8 text-[12.5px]"
-                    />
-                  </div>
-                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                    {filteredPresets.map((preset) => {
-                      const active = preset.id === selectedPresetId
-                      return (
-                        <button
-                          key={preset.id}
-                          type="button"
-                          onClick={() => applyPreset(preset)}
-                          className={cn(
-                            'border-border/60 bg-card/40 hover:border-foreground/30 hover:bg-card/70 group rounded-lg border px-3 py-2.5 text-left transition-colors',
-                            active && 'border-foreground/40 bg-card/80',
-                          )}
-                        >
-                          <div className="flex items-center gap-2">
-                            <FileText className="text-muted-foreground size-3.5 shrink-0" />
-                            <span className="text-foreground text-[12.5px] font-medium">
-                              {preset.name}
-                            </span>
-                          </div>
-                          <div className="text-muted-foreground mt-1 truncate text-[11.5px]">
-                            {preset.fileName}
-                          </div>
-                        </button>
-                      )
-                    })}
-                    {filteredPresets.length === 0 && (
-                      <p className="text-muted-foreground col-span-full text-[12px]">
-                        No presets match “{presetSearch}”.
-                      </p>
-                    )}
-                  </div>
-                </div>
-              )}
-            </TabsContent>
-
-            {/* ── From-file tab ──────────────────────────────────────────── */}
-            <TabsContent value="file" className="pt-3">
-              <div className="flex flex-col gap-2">
+        <div className="px-5 pb-5 pt-4">
+          {/* ── Source dropdown ──────────────────────────────────────── */}
+          <div className="flex flex-col gap-1.5">
+            <span className="text-muted-foreground text-[12px] font-medium">
+              Source
+            </span>
+            <Popover open={pickerOpen} onOpenChange={setPickerOpen}>
+              <PopoverTrigger asChild>
                 <button
                   type="button"
-                  onClick={() => void pickFile()}
-                  className="border-border/60 text-muted-foreground hover:bg-accent/40 flex h-9 items-center gap-2 rounded-md border px-3 text-[12.5px] transition-colors"
+                  aria-label="Pick agent source"
+                  className="border-border/60 bg-secondary/40 hover:bg-accent/40 flex h-10 w-full items-center gap-2 rounded-md border px-3 text-left transition-colors"
                 >
-                  <FolderOpen className="size-3.5" />
-                  <span className="flex-1 truncate text-left">
-                    {pickedFilePath ?? 'Browse for a .md file…'}
+                  <span className="min-w-0 flex-1">
+                    <span className="text-foreground/90 block truncate text-[13px] font-medium">
+                      {triggerLabel}
+                    </span>
+                    <span className="text-muted-foreground/80 block truncate text-[11.5px]">
+                      {triggerSubLabel}
+                    </span>
                   </span>
+                  <ChevronDown className="text-muted-foreground size-4 shrink-0 opacity-70" />
                 </button>
-                {pickedFileError && (
-                  <p className="text-destructive text-[11.5px]">
-                    {pickedFileError}
-                  </p>
-                )}
-                <p className="text-muted-foreground/80 text-[11.5px]">
-                  The chosen file is loaded into the system prompt below.
-                  Edit anything before saving.
-                </p>
-              </div>
-            </TabsContent>
+              </PopoverTrigger>
+              <PopoverContent
+                align="start"
+                sideOffset={4}
+                className="bg-popover ring-border/60 w-[--radix-popover-trigger-width] rounded-md p-0 ring-1"
+              >
+                <div className="border-border/40 flex items-center gap-2 border-b px-3 py-2">
+                  <Search className="text-muted-foreground size-3.5" />
+                  <input
+                    value={pickerSearch}
+                    onChange={(e) => setPickerSearch(e.target.value)}
+                    placeholder="Search presets…"
+                    className="placeholder:text-muted-foreground/70 w-full bg-transparent text-[12.5px] outline-none"
+                  />
+                  {pickerSearch && (
+                    <button
+                      type="button"
+                      onClick={() => setPickerSearch('')}
+                      className="text-muted-foreground hover:text-foreground"
+                      aria-label="Clear search"
+                    >
+                      <X className="size-3.5" />
+                    </button>
+                  )}
+                </div>
+                <div className="max-h-72 overflow-y-auto py-1">
+                  {/* Custom + Browse as static rows at the top */}
+                  <button
+                    type="button"
+                    onClick={applyCustom}
+                    className="hover:bg-accent flex w-full items-center gap-2 px-3 py-2 text-left text-[12.5px] transition-colors"
+                  >
+                    <FileText className="text-muted-foreground size-3.5" />
+                    <span className="flex-1">
+                      <span className="text-foreground/90 block font-medium">
+                        Custom
+                      </span>
+                      <span className="text-muted-foreground/80 block text-[11.5px]">
+                        Start from scratch — no preset
+                      </span>
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void pickFile()}
+                    className="hover:bg-accent flex w-full items-center gap-2 border-border/40 border-t px-3 py-2 text-left text-[12.5px] transition-colors"
+                  >
+                    <FolderOpen className="text-muted-foreground size-3.5" />
+                    <span className="flex-1">
+                      <span className="text-foreground/90 block font-medium">
+                        Browse…
+                      </span>
+                      <span className="text-muted-foreground/80 block text-[11.5px]">
+                        Pick a markdown file from disk
+                      </span>
+                    </span>
+                  </button>
 
-            {/* ── Custom tab ─────────────────────────────────────────────── */}
-            <TabsContent value="custom" className="pt-3">
-              <p className="text-muted-foreground text-[12.5px]">
-                Write the agent's instructions from scratch. The
-                description and system prompt below are independent of
-                any preset.
+                  {filteredPresets.length > 0 && (
+                    <div className="border-border/40 border-t pt-1">
+                      {filteredPresets.map((preset) => {
+                        const active = source.kind === 'preset' && source.presetId === preset.id
+                        return (
+                          <button
+                            key={preset.id}
+                            type="button"
+                            onClick={() => applyPreset(preset)}
+                            className={cn(
+                              'hover:bg-accent flex w-full items-center gap-2 px-3 py-1.5 text-left text-[12.5px] transition-colors',
+                              active && 'bg-accent',
+                            )}
+                          >
+                            <span className="text-base leading-none">
+                              {preset.emoji ?? '📄'}
+                            </span>
+                            <span className="flex-1">
+                              <span className="text-foreground/90 block font-medium">
+                                {preset.name}
+                              </span>
+                              <span className="text-muted-foreground/80 block text-[11.5px]">
+                                {preset.fileName}
+                              </span>
+                            </span>
+                          </button>
+                        )
+                      })}
+                    </div>
+                  )}
+
+                  {filteredPresets.length === 0 && (
+                    <p className="text-muted-foreground px-3 py-2 text-[12px]">
+                      No presets match “{pickerSearch}”.
+                    </p>
+                  )}
+                </div>
+              </PopoverContent>
+            </Popover>
+            {pickedFileError && (
+              <p className="text-destructive text-[11.5px]">
+                {pickedFileError}
               </p>
-            </TabsContent>
-          </Tabs>
+            )}
+          </div>
 
           {/* ── Shared form (always visible) ──────────────────────────── */}
           <div className="mt-4 flex flex-col gap-4 border-t pt-4">
@@ -414,7 +479,7 @@ export function CreateAgentDialog({
               <CharCount value={description} max={DESCRIPTION_MAX} />
             </div>
 
-            {/* System prompt — compact textarea, shows source attribution */}
+            {/* System prompt — capped, scrollable, source attribution */}
             <div>
               <div className="mb-2 flex items-center justify-between">
                 <label
@@ -423,15 +488,15 @@ export function CreateAgentDialog({
                 >
                   System prompt
                 </label>
-                {tab === 'preset' && selectedPreset && (
+                {source.kind === 'preset' && selectedPreset && (
                   <span className="text-muted-foreground/70 text-[11px]">
                     from <code>{selectedPreset.fileName}</code>
                   </span>
                 )}
-                {tab === 'file' && pickedFilePath && (
+                {source.kind === 'browse' && source.filePath && (
                   <span className="text-muted-foreground/70 truncate text-[11px]">
                     from{' '}
-                    <code>{pickedFilePath.split(/[\\/]/).pop()}</code>
+                    <code>{source.filePath.split(/[\\/]/).pop()}</code>
                   </span>
                 )}
               </div>
@@ -445,6 +510,12 @@ export function CreateAgentDialog({
                 className="bg-secondary/40 border-border/60 min-h-32 max-h-72 resize-y text-[12.5px] leading-relaxed font-mono"
               />
               <CharCount value={systemPrompt} max={PROMPT_MAX} />
+              {selectedPreset && (
+                <p className="text-muted-foreground/70 mt-1 text-[11.5px]">
+                  Tools allowed for this preset:{' '}
+                  <code>{selectedPreset.tools.join(', ')}</code>
+                </p>
+              )}
             </div>
 
             {/* Model selector */}

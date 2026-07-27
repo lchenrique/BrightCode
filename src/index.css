@@ -610,6 +610,25 @@
   }
 }
 
+/* Shine effect for active session names in the sidebar — the text itself
+   sweeps between its foreground color and the primary/highlight color,
+   making it feel alive without needing a separate glow element. */
+.task-title-shine {
+  background: linear-gradient(
+    90deg,
+    var(--foreground) 0%,
+    var(--foreground) 35%,
+    var(--primary) 50%,
+    var(--foreground) 65%,
+    var(--foreground) 100%
+  );
+  background-size: 300% 100%;
+  background-clip: text;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: shine 2.5s ease-in-out infinite;
+}
+
 @keyframes fadeInUp {
   from {
     opacity: 0;
