@@ -368,6 +368,15 @@ const fs = {
   > {
     return ipcRenderer.invoke(IPC.FS_BROWSE, defaultPath)
   },
+  browseFile(options?: {
+    title?: string
+    defaultPath?: string
+    filters?: Array<{ name: string; extensions: string[] }>
+  }): Promise<
+    { ok: true; path: string | null } | { ok: false; error: string }
+  > {
+    return ipcRenderer.invoke(IPC.FS_BROWSE_FILE, options)
+  },
   validate(path: string): Promise<
     | { ok: true; realPath: string }
     | { ok: false; error: string; code?: string }

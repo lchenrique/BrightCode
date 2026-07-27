@@ -299,6 +299,36 @@ export async function browseForFolder(
   return { ok: true, path: result.filePaths[0] }
 }
 
+/**
+ * Pops the OS file picker. Returns the chosen absolute path, or null if
+ * the user cancelled. `filters` defaults to markdown + plain text — the
+ * agent team creator uses this to seed a custom agent from a `.md`
+ * file the user has on disk.
+ */
+export async function browseForFile(options?: {
+  title?: string
+  defaultPath?: string
+  filters?: Array<{ name: string; extensions: string[] }>
+}): Promise<{ ok: true; path: string | null } | { ok: false; error: string }> {
+  const targetWindow = BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0]
+  const filters =
+    options?.filters ?? [
+      { name: 'Markdown', extensions: ['md', 'markdown', 'mdx'] },
+      { name: 'Text', extensions: ['txt'] },
+      { name: 'All files', extensions: ['*'] },
+    ]
+  const result = await dialog.showOpenDialog(targetWindow, {
+    title: options?.title ?? 'Open file',
+    defaultPath: options?.defaultPath,
+    properties: ['openFile'],
+    filters,
+  })
+  if (result.canceled || result.filePaths.length === 0) {
+    return { ok: true, path: null }
+  }
+  return { ok: true, path: result.filePaths[0] }
+}
+
 // ── Validation ─────────────────────────────────────────────────────────
 
 export type ValidateResult =
@@ -414,6 +444,9 @@ export function registerFsIpc(): void {
   })
   ipcMain.handle(IPC.FS_LIST_DIRS, (_e, dirPath: string) => listDirs(dirPath))
   ipcMain.handle(IPC.FS_BROWSE, (_e, defaultPath?: string) => browseForFolder(defaultPath))
+  ipcMain.handle(IPC.FS_BROWSE_FILE, (_e, options?: { title?: string; defaultPath?: string; filters?: Array<{ name: string; extensions: string[] }> }) =>
+    browseForFile(options),
+  )
   ipcMain.handle(IPC.FS_VALIDATE, (_e, path: string) => validatePath(path))
   ipcMain.handle(IPC.FS_CLONE, (_e, url: string, dest: string) => cloneRepo(url, dest))
   ipcMain.handle(IPC.FS_CREATE_DIR, (_e, target: string) => createProjectDir(target))

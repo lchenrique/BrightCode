@@ -71,6 +71,10 @@ export const IPC = {
   FS_VALIDATE: 'fs:validate',
   FS_CLONE: 'fs:clone',
   FS_CREATE_DIR: 'fs:create-dir',
+  /** Pops the OS file picker. Returns the absolute path of the chosen
+   *  file, or null if the user cancelled. Used by the agent team
+   *  creator to seed a custom agent from a markdown file on disk. */
+  FS_BROWSE_FILE: 'fs:browse-file',
   FS_PROJECT_TREE: 'fs:project-tree',
   FS_PROJECT_READ: 'fs:project-read',
   FS_PROJECT_WRITE: 'fs:project-write',
