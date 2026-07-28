@@ -12,7 +12,9 @@
     "preview": "vite preview",
     "electron:dev": "cross-env ELECTRON=1 vite",
     "electron:build": "npm run build && electron-builder",
-    "electron:preview": "cross-env ELECTRON=1 vite preview"
+    "electron:preview": "cross-env ELECTRON=1 vite preview",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "dependencies": {
     "@dicebear/collection": "^9.4.2",
@@ -61,7 +63,9 @@
     "typescript": "~6.0.2",
     "vite": "^8.1.1",
     "vite-plugin-electron": "^0.29.1",
-    "vite-plugin-electron-renderer": "^0.14.7"
+    "vite-plugin-electron-renderer": "^0.14.7",
+    "vite-tsconfig-paths": "^6.1.1",
+    "vitest": "^4.1.10"
   },
   "build": {
     "appId": "dev.brightcode.app",

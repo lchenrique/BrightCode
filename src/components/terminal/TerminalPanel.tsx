@@ -16,6 +16,7 @@ import {
 } from 'lucide-react'
 import type { Project } from '@/lib/projects/store'
 import { cn } from '@/lib/utils'
+import { Tip } from '@/components/ui/tip'
 
 const TERMINAL_MIN_HEIGHT = 140
 const TERMINAL_DEFAULT_HEIGHT = 260
@@ -125,24 +126,26 @@ export function TerminalPanel({
         </div>
 
         <div className="flex shrink-0 items-center gap-0.5 px-1">
-          <button
-            type="button"
-            aria-label="New terminal"
-            title="New terminal"
-            className="inline-flex size-6 items-center justify-center rounded text-zinc-500 hover:bg-white/10 hover:text-zinc-200"
-            onClick={addTerminal}
-          >
-            <Plus className="size-3.5" />
-          </button>
-          <button
-            type="button"
-            aria-label="Hide terminal panel"
-            title="Hide terminal"
-            className="inline-flex size-6 items-center justify-center rounded text-zinc-500 hover:bg-white/10 hover:text-zinc-200"
-            onClick={onRequestClose}
-          >
-            <PanelBottomClose className="size-3.5" />
-          </button>
+          <Tip label="New terminal" side="bottom">
+            <button
+              type="button"
+              aria-label="New terminal"
+              className="inline-flex size-6 items-center justify-center rounded text-zinc-500 hover:bg-white/10 hover:text-zinc-200"
+              onClick={addTerminal}
+            >
+              <Plus className="size-3.5" />
+            </button>
+          </Tip>
+          <Tip label="Hide terminal" side="bottom" kbd="Ctrl+`">
+            <button
+              type="button"
+              aria-label="Hide terminal panel"
+              className="inline-flex size-6 items-center justify-center rounded text-zinc-500 hover:bg-white/10 hover:text-zinc-200"
+              onClick={onRequestClose}
+            >
+              <PanelBottomClose className="size-3.5" />
+            </button>
+          </Tip>
         </div>
       </div>
 

@@ -52,12 +52,15 @@ export function BashApprovalDialog() {
 
   const respond = useCallback(
     (approved: boolean) => {
-      const api = window.electronAPI
-      if (!pending || !api?.tools?.respondToBashApproval) return
-      api.tools.respondToBashApproval(pending.approvalId, approved)
-      setPending(null)
+      // Clear synchronously before IPC to prevent double-fire from
+      // simultaneous Enter key + button click, or rapid double-click.
+      const current = pending
+      if (!current || !window.electronAPI?.tools?.respondToBashApproval) return
+      setPending(null) // optimistic clear — now `pending` is null for any racing call
+      window.electronAPI.tools.respondToBashApproval(current.approvalId, approved)
     },
-    [pending],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [], // intentionally depend on nothing — always reads the *current* `pending` from closure
   )
 
   // Esc → deny. Enter → approve (only when the dialog is open).

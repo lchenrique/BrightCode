@@ -409,11 +409,25 @@ function globToRegex(pattern: string): RegExp {
  * renderer can answer a specific request even if several are open.
  * The Promise resolver runs when the renderer sends
  * `IPC.TOOL_BASH_APPROVAL_RESPOND` with the same `approvalId`.
+ *
+ * Safety invariants:
+ * - Each `approvalId` resolves at most once (duplicate resolves are dropped).
+ * - When a second bash call arrives while one is pending, the second
+ *   requestId is queued so the renderer can show both sequentially.
+ * - `pendingBashApprovals` is the source of truth; renderer state is derived.
  */
 const pendingBashApprovals = new Map<
   string,
   { resolve: (approved: boolean) => void; timer: NodeJS.Timeout }
 >()
+
+/**
+ * Tracks whether a bash approval is currently visible to the user.
+ * When non-null, a second bash tool call must wait for this one to resolve
+ * before sending another IPC request, otherwise the dialog would silently
+ * swallow the second approval and its promise would hang forever.
+ */
+let activeApprovalId: string | null = null
 
 const BASH_APPROVAL_TIMEOUT_MS = 5 * 60 * 1000
 const BASH_OUTPUT_BYTE_LIMIT = 200_000
@@ -428,9 +442,21 @@ export function registerToolsIpc(): void {
       payload: { approvalId: string; approved: boolean; rememberChoice?: boolean },
     ) => {
       const pending = pendingBashApprovals.get(payload.approvalId)
-      if (!pending) return
+      if (!pending) return // duplicate or stale — ignore safely
       pendingBashApprovals.delete(payload.approvalId)
       clearTimeout(pending.timer)
+
+      const window = BrowserWindow.getAllWindows()[0]
+
+      // Advance activeApprovalId *before* resolving so any queued bash
+      // gets sent before the next model round-trip arrives.
+      if (activeApprovalId === payload.approvalId) {
+        activeApprovalId = null
+        if (window && !window.isDestroyed()) {
+          sendNextQueuedApproval(window)
+        }
+      }
+
       pending.resolve(payload.approved === true)
     },
   )
@@ -440,6 +466,10 @@ export function registerToolsIpc(): void {
  * Send an approval request to the renderer and await the response.
  * Returns `false` if the user denies, the timeout elapses, or no
  * window is open to show the modal.
+ *
+ * If a bash approval is already active (user hasn't responded yet), the
+ * second call waits in a queue and is only sent after the first resolves.
+ * This prevents the silent "second bash hangs forever" bug.
  */
 function requestBashApproval(
   approvalId: string,
@@ -453,19 +483,55 @@ function requestBashApproval(
       resolve(false)
       return
     }
+
     const timer = setTimeout(() => {
       if (pendingBashApprovals.has(approvalId)) {
         pendingBashApprovals.delete(approvalId)
+        if (activeApprovalId === approvalId) {
+          activeApprovalId = null
+          sendNextQueuedApproval(window)
+        }
         resolve(false)
       }
     }, BASH_APPROVAL_TIMEOUT_MS)
+
     pendingBashApprovals.set(approvalId, { resolve, timer })
+
+    // If another bash is already awaiting approval, queue this one instead
+    // of sending a second IPC request (which would get silently dropped by
+    // the single-instance dialog, leaving the promise hanging forever).
+    if (activeApprovalId !== null) {
+      queuedBashApprovals.push({ approvalId, command, workdir, timeoutMs })
+      return
+    }
+
+    activeApprovalId = approvalId
     window.webContents.send(IPC.TOOL_BASH_APPROVAL_REQUEST, {
       approvalId,
       command,
       workdir,
       timeoutMs,
     })
+  })
+}
+
+/** Queue for bash approvals that arrive while another is already pending. */
+const queuedBashApprovals: Array<{
+  approvalId: string
+  command: string
+  workdir: string
+  timeoutMs: number
+}> = []
+
+function sendNextQueuedApproval(window: BrowserWindow): void {
+  const next = queuedBashApprovals.shift()
+  if (!next) return
+  activeApprovalId = next.approvalId
+  window.webContents.send(IPC.TOOL_BASH_APPROVAL_REQUEST, {
+    approvalId: next.approvalId,
+    command: next.command,
+    workdir: next.workdir,
+    timeoutMs: next.timeoutMs,
   })
 }
 

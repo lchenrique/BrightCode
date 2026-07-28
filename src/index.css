@@ -671,3 +671,71 @@
     animation: none;
   }
 }
+
+/*
+ * Hermes-style design tokens (brightcode/DESIGN.md).
+ * Derived from the base theme tokens so they adapt across all themes
+ * (politron, catppuccin, supabase, …) without per-theme duplication.
+ *
+ * Reference: https://github.com/NousResearch/hermes-agent/blob/main/apps/desktop/DESIGN.md
+ *
+ *  - --shadow-nous: downward-weighted elevation for floating panels
+ *  - --stroke-nous: hairline that pairs with --shadow-nous
+ *  - --ui-stroke-primary…quaternary: hairlines, descending strength
+ *  - --ui-text-primary…tertiary: text hierarchy
+ *  - --ui-bg-quaternary: soft control fill (secondary button)
+ *  - --chrome-action-hover: hover fill for quiet controls
+ */
+@layer base {
+  :root {
+    --ui-stroke-primary: color-mix(in oklch, var(--foreground) 28%, transparent);
+    --ui-stroke-secondary: color-mix(in oklch, var(--foreground) 20%, transparent);
+    --ui-stroke-tertiary: color-mix(in oklch, var(--foreground) 12%, transparent);
+    --ui-stroke-quaternary: color-mix(in oklch, var(--foreground) 6%, transparent);
+
+    --ui-text-primary: var(--foreground);
+    --ui-text-secondary: color-mix(in oklch, var(--foreground) 78%, transparent);
+    --ui-text-tertiary: color-mix(in oklch, var(--foreground) 55%, transparent);
+
+    --ui-bg-quaternary: color-mix(in oklch, var(--muted) 88%, var(--background));
+
+    --chrome-action-hover: color-mix(in oklch, var(--accent) 88%, transparent);
+
+    --shadow-nous:
+      0 1px 2px color-mix(in oklch, var(--foreground) 6%, transparent),
+      0 4px 8px color-mix(in oklch, var(--foreground) 5%, transparent),
+      0 12px 24px color-mix(in oklch, var(--foreground) 4%, transparent);
+
+    --stroke-nous: color-mix(in oklch, var(--foreground) 10%, transparent);
+  }
+
+  .dark {
+    --shadow-nous:
+      0 1px 2px rgb(0 0 0 / 0.25),
+      0 4px 8px rgb(0 0 0 / 0.32),
+      0 12px 24px rgb(0 0 0 / 0.45);
+    --stroke-nous: rgb(255 255 255 / 0.08);
+  }
+}
+
+/*
+ * Lemniscate-bloom loader animation (Hermes DESIGN.md).
+ * Used by <Loader> primitive for long-running operations.
+ *  - Respects prefers-reduced-motion
+ *  - Never use the literal text "Loading…"
+ */
+@keyframes lemniscate-bloom {
+  0% {
+    transform: scale(0.85) rotate(0deg);
+    opacity: 0.55;
+  }
+  50% {
+    transform: scale(1) rotate(180deg);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(0.85) rotate(360deg);
+    opacity: 0.55;
+  }
+}
+
