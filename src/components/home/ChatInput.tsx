@@ -548,15 +548,6 @@ function ModelSelector({ value, onChange, groups, options, emptyMessage }: Model
   const itemCount =
     step === 'model' && selectedGroup ? filteredModels.length : sortedGroups.length
 
-  /** Locate the provider + row index of the current `value` within `sortedGroups`. */
-  const findCurrentSelection = (): { group: ModelGroup; index: number } | null => {
-    for (const g of sortedGroups) {
-      const index = g.models.findIndex((m) => `${m.provider}/${m.id}` === value)
-      if (index >= 0) return { group: g, index }
-    }
-    return null
-  }
-
   const scrollItemIntoView = (index: number) => {
     const items = contentRef.current?.querySelectorAll('[data-picker-item]')
     items?.[index]?.scrollIntoView({ block: 'nearest' })
@@ -583,19 +574,12 @@ function ModelSelector({ value, onChange, groups, options, emptyMessage }: Model
   const handleOpenChange = (nextOpen: boolean) => {
     setOpen(nextOpen)
     if (!nextOpen) return
-    // When the current selection resolves to a known provider, skip the
-    // provider step and jump straight to that provider's models.
+    // Always open at the provider list so the user sees every configured
+    // provider at a glance, not just the last-used one's models.
     setSearchQuery('')
-    const current = value ? findCurrentSelection() : null
-    if (current) {
-      setSelectedProviderId(current.group.providerId)
-      setStep('model')
-      setFocusedIndex(current.index)
-    } else {
-      setSelectedProviderId(null)
-      setStep('provider')
-      setFocusedIndex(-1)
-    }
+    setSelectedProviderId(null)
+    setStep('provider')
+    setFocusedIndex(-1)
   }
 
   const handleKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
