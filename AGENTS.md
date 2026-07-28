@@ -53,3 +53,17 @@ field is dropped from the type.
   comment density of the file you're editing.
 - **Validate with CDP**: any UI change ships with a CDP test in
   `scripts/cdp-*.mjs` and screenshots in `scripts/screenshots/`.
+
+<!-- bright-memory:start -->
+# Bright Memory
+
+Antes de iniciar qualquer tarefa:
+
+1. Execute `bright-memory context`.
+2. Utilize o contexto retornado antes de modificar qualquer arquivo.
+3. Ao concluir uma tarefa relevante execute `bright-memory save`.
+4. Nunca altere `.bright-memory.json`.
+5. Nunca utilize arquivos Markdown como memória persistente.
+6. Toda memória permanente deve ser salva através da CLI.
+
+<!-- bright-memory:end -->

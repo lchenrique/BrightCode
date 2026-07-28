@@ -48,6 +48,7 @@ import {
 } from '@/hooks/use-provider-registry'
 import { useActiveProject } from '@/hooks/use-projects'
 import { useTask, useTasksActions } from '@/hooks/use-tasks'
+import { tasksStore } from '@/lib/tasks/store'
 import { buildSystemPrompt } from '@/lib/agents/system-prompt'
 import { getAllTools } from '@/lib/agents/tools'
 import { agentStore } from '@/lib/agents'
@@ -914,6 +915,10 @@ export function ChatSurface({
       ...(contentBlocks ? { contentBlocks } : {}),
     }
 
+    // Each new turn starts with a clean Progress list. The agent will
+    // append steps as tool calls happen.
+    if (taskId) tasksStore.clearProgress(taskId)
+
     const baseMessages = [...messagesRef.current, userMsg]
     isAtBottomRef.current = true
     setMessages(baseMessages)
@@ -1132,6 +1137,28 @@ export function ChatSurface({
           ),
         )
 
+        // Surface each tool call to the task's progress list so the
+        // Environmental Information "Progress" section shows what the
+        // agent is doing in real time.
+        const stepIds: Array<{ toolId: string; stepId: string }> = []
+        for (const tc of toolCalls) {
+          const input = (tc.input ?? {}) as Record<string, unknown>
+          const detail =
+            typeof input.path === 'string'
+              ? input.path
+              : typeof input.command === 'string'
+                ? input.command
+                : typeof input.query === 'string'
+                  ? input.query
+                  : undefined
+          if (!taskId) continue
+          const stepId = tasksStore.addProgress(taskId, tc.name, detail)
+          if (stepId) {
+            stepIds.push({ toolId: tc.id, stepId })
+            tasksStore.setProgressStatus(taskId, stepId, 'running')
+          }
+        }
+
         const toolResults = await Promise.all(toolCalls.map(async (tc) => {
           const toolResultId = crypto.randomUUID()
 
@@ -1338,6 +1365,18 @@ export function ChatSurface({
           ...toolResults.map((result) => result.uiMessage),
         ])
         convo.push(...toolResults.map((result) => result.wireMessage))
+
+        // Mark each step as completed/failed so the EnvInfo "Progress" section
+        // reflects the actual outcome.
+        const errorByToolId = new Map(
+          toolResults
+            .filter((r) => r.uiMessage.toolError)
+            .map((r) => [r.uiMessage.toolCalls?.[0]?.id ?? '', r]),
+        )
+        for (const { toolId, stepId } of stepIds) {
+          const status = errorByToolId.has(toolId) ? 'failed' : 'completed'
+          if (taskId) tasksStore.setProgressStatus(taskId, stepId, status)
+        }
       }
 
       if (!deliveredFinalResponse) {

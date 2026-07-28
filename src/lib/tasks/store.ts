@@ -14,6 +14,19 @@
  * reloads and can be restored when re-opening a task.
  */
 
+export type ProgressStepStatus = 'pending' | 'running' | 'completed' | 'failed'
+
+export type ProgressStep = {
+  id: string
+  title: string
+  status: ProgressStepStatus
+  /** When the step started; used to show a "1m ago" hint later. */
+  startedAt?: number
+  finishedAt?: number
+  /** Optional detail line (e.g. file path, command). */
+  detail?: string
+}
+
 export type Task = {
   id: string
   /** Owning project id, or null for a "loose" conversation. */
@@ -24,6 +37,12 @@ export type Task = {
   selectedModel?: string
   /** Account selection restored whenever this conversation is opened. */
   selectedAccountId?: string
+  /**
+   * Steps that the agent is currently working on (tool calls, sub-tasks,
+   * etc). The Environmental Information "Progress" section reads from
+   * this list. Reset to `[]` when a new user turn starts.
+   */
+  progress?: ProgressStep[]
   createdAt: number
   updatedAt: number
 }
@@ -136,6 +155,70 @@ class TasksStore {
     if (typeof window !== 'undefined' && window.electronAPI?.tasks) {
       void window.electronAPI.tasks.update(id, patch)
     }
+  }
+
+  // ── Progress tracking (in-memory, per session) ─────────────────────────
+
+  /** Replace the whole progress list for a task. Pass `[]` to clear. */
+  setProgress(id: string, steps: ProgressStep[]): void {
+    this.tasks = this.tasks.map((t) =>
+      t.id === id ? { ...t, progress: steps, updatedAt: Date.now() } : t,
+    )
+    this.emit()
+  }
+
+  /** Append a step (defaults to `pending` status) and return its id. */
+  addProgress(id: string, title: string, detail?: string): string | null {
+    const task = this.tasks.find((t) => t.id === id)
+    if (!task) return null
+    const step: ProgressStep = {
+      id: crypto.randomUUID(),
+      title,
+      status: 'pending',
+      startedAt: Date.now(),
+      ...(detail ? { detail } : {}),
+    }
+    const next = [...(task.progress ?? []), step]
+    this.tasks = this.tasks.map((t) =>
+      t.id === id ? { ...t, progress: next, updatedAt: Date.now() } : t,
+    )
+    this.emit()
+    return step.id
+  }
+
+  /** Mark an existing step as `running`, `completed`, or `failed`. */
+  setProgressStatus(
+    id: string,
+    stepId: string,
+    status: ProgressStepStatus,
+  ): void {
+    this.tasks = this.tasks.map((t) => {
+      if (t.id !== id) return t
+      const next = (t.progress ?? []).map((s) =>
+        s.id === stepId
+          ? {
+              ...s,
+              status,
+              ...(status === 'running' && !s.startedAt
+                ? { startedAt: Date.now() }
+                : {}),
+              ...(status === 'completed' || status === 'failed'
+                ? { finishedAt: Date.now() }
+                : {}),
+            }
+          : s,
+      )
+      return { ...t, progress: next, updatedAt: Date.now() }
+    })
+    this.emit()
+  }
+
+  /** Clear the progress list for a task. */
+  clearProgress(id: string): void {
+    this.tasks = this.tasks.map((t) =>
+      t.id === id ? { ...t, progress: [], updatedAt: Date.now() } : t,
+    )
+    this.emit()
   }
 
   // ── Pending first message (welcome → task handoff) ───────────────────

@@ -1,5 +1,6 @@
 import {
   ArrowUp,
+  Check,
   ChevronDown,
   FileCode2,
   FilePlus2,
@@ -11,6 +12,7 @@ import {
   RefreshCw,
   Sparkles,
   SquareTerminal,
+  X,
 } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { useGit, type GitChange } from '@/hooks/use-git'
@@ -311,30 +313,48 @@ export function EnvironmentalInfoPanel({
             collapsed={collapsed.push}
             onToggle={() => toggleSection('push')}
           >
-            <button
-              type="button"
-              onClick={handlePush}
-              disabled={pushing || (!status?.ahead && !status?.behind && !error)}
-              className={cn(
-                'text-[11.5px] inline-flex h-7 w-full items-center justify-center gap-1.5 rounded-md font-medium transition-colors',
-                pushing
-                  ? 'bg-muted text-muted-foreground cursor-not-allowed'
-                  : pushSuccess
-                    ? 'bg-emerald-500/20 text-emerald-500'
-                    : 'text-foreground/80 hover:text-foreground hover:bg-accent/60',
-              )}
-            >
-              {pushing ? (
-                <LoaderCircle className="size-3 animate-spin" />
-              ) : (
-                <GitPullRequest className="size-3.5" />
-              )}
-              {pushing
-                ? 'Pushing…'
+            {(() => {
+              const hasUpstream =
+                !!(status?.ahead || status?.behind) || !!error
+              const disabled = pushing || !hasUpstream
+              const helpText = pushing
+                ? 'Pushing to remote…'
                 : pushSuccess
-                  ? 'Pushed'
-                  : `Push${status?.ahead ? ` (${status.ahead} commits)` : ''}`}
-            </button>
+                  ? 'Push complete'
+                  : !status
+                    ? 'Loading git status…'
+                    : !hasUpstream
+                      ? 'No local commits to push. Commit something first.'
+                      : `Push ${status?.ahead ?? 0} commit(s) to remote`
+              return (
+                <button
+                  type="button"
+                  onClick={handlePush}
+                  disabled={disabled}
+                  title={helpText}
+                  aria-label={helpText}
+                  className={cn(
+                    'text-[11.5px] inline-flex h-7 w-full items-center justify-center gap-1.5 rounded-md font-medium transition-colors',
+                    pushing
+                      ? 'bg-muted text-muted-foreground cursor-not-allowed'
+                      : pushSuccess
+                        ? 'bg-emerald-500/20 text-emerald-500'
+                        : 'text-foreground/80 hover:text-foreground hover:bg-accent/60',
+                  )}
+                >
+                  {pushing ? (
+                    <LoaderCircle className="size-3 animate-spin" />
+                  ) : (
+                    <GitPullRequest className="size-3.5" />
+                  )}
+                  {pushing
+                    ? 'Pushing…'
+                    : pushSuccess
+                      ? 'Pushed'
+                      : `Push${status?.ahead ? ` (${status.ahead} commits)` : ''}`}
+                </button>
+              )
+            })()}
           </Section>
 
           <Section
@@ -407,18 +427,59 @@ function Section({
 }
 
 function ProgressList({ taskId }: { taskId?: string | null }) {
-  // Best-effort "steps" view: group the conversation's tool calls into
-  // discrete steps. Until the task has any tool usage we just say so.
   const task = useTask(taskId ?? null)
   if (!task) {
     return (
       <p className="text-muted-foreground px-1 py-1.5 text-[11px]">No active task</p>
     )
   }
-  // The lightweight plan/checkbox support would land in TaskStore itself.
-  // Until then we show a calm placeholder that mirrors the MiniMax Code copy.
+  const steps = task.progress ?? []
+  if (steps.length === 0) {
+    return (
+      <p className="text-muted-foreground px-1 py-1.5 text-[11px]">No active tasks</p>
+    )
+  }
   return (
-    <p className="text-muted-foreground px-1 py-1.5 text-[11px]">No active tasks</p>
+    <ul className="space-y-1">
+      {steps.map((step) => {
+        const done = step.status === 'completed'
+        const failed = step.status === 'failed'
+        const running = step.status === 'running'
+        return (
+          <li
+            key={step.id}
+            className="text-foreground/80 flex items-center gap-1.5 text-[11px]"
+            title={step.detail ?? step.title}
+          >
+            {failed ? (
+              <X className="text-destructive size-3.5 shrink-0" />
+            ) : done ? (
+              <Check className="text-muted-foreground size-3.5 shrink-0" />
+            ) : running ? (
+              <LoaderCircle className="text-foreground/80 size-3.5 shrink-0 animate-spin" />
+            ) : (
+              <span className="text-muted-foreground inline-flex size-3.5 shrink-0 items-center justify-center rounded-full border text-[9px] font-medium leading-none">
+                {steps.indexOf(step) + 1}
+              </span>
+            )}
+            <span
+              className={cn(
+                'truncate',
+                done && 'line-through opacity-60',
+                failed && 'text-destructive/80',
+              )}
+            >
+              {step.title}
+              {step.detail ? (
+                <span className="text-muted-foreground ml-1 font-mono text-[10px]">
+                  {step.detail}
+                </span>
+              ) : null}
+            </span>
+          </li>
+        )
+      })}
+    </ul>
   )
 }
 
