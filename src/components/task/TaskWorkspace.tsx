@@ -21,6 +21,7 @@ import {
   ProjectFileTreePanel,
   type ProjectFileEntry,
 } from '@/components/files/ProjectFileTreePanel'
+import { EnvironmentalInfoPanel } from '@/components/envinfo/EnvironmentalInfoPanel'
 import { ViewTopBar } from '@/components/layout/ViewTopBar'
 import { TerminalPanel } from '@/components/terminal/TerminalPanel'
 import {
@@ -229,6 +230,8 @@ export function TaskWorkspace({
   initialMessage,
   explorerOpen,
   onToggleExplorer,
+  envInfoOpen,
+  onToggleEnvInfo,
 }: {
   title: string
   taskId: string
@@ -239,6 +242,8 @@ export function TaskWorkspace({
   } | null
   explorerOpen: boolean
   onToggleExplorer?: () => void
+  envInfoOpen: boolean
+  onToggleEnvInfo?: () => void
 }) {
   const [tabs, setTabs] = useState<OpenFile[]>([])
   const [activeSurface, setActiveSurface] = useState<'chat' | 'file'>('chat')
@@ -487,6 +492,8 @@ export function TaskWorkspace({
         folderOpen={explorerOpen}
         folderDisabled={!project}
         onToggleFolder={onToggleExplorer}
+        envInfoOpen={envInfoOpen}
+        onToggleEnvInfo={project ? onToggleEnvInfo : undefined}
         terminalOpen={terminalOpen}
         onToggleTerminal={
           project ? () => setTerminalOpen((open) => !open) : undefined
@@ -678,6 +685,16 @@ export function TaskWorkspace({
             activePath={activeSurface === 'file' ? selectedFilePath : null}
             loadingPath={loadingPath}
             onOpenFile={(entry) => void openFile(entry)}
+          />
+        )}
+
+        {project && (
+          <EnvironmentalInfoPanel
+            project={project}
+            open={envInfoOpen}
+            onOpenTerminal={
+              project ? () => setTerminalOpen(true) : undefined
+            }
           />
         )}
       </div>

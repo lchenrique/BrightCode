@@ -174,6 +174,13 @@ export const IPC = {
   USAGE_CLEAR: 'usage:clear',
   /** Main → renderer broadcast when usage or quota data changes. */
   USAGE_CHANGED: 'usage:changed',
+
+  /**
+   * Git operations for the Environmental Info panel.
+   * Renderer → main: invoke(GIT_EXEC, projectId, args[]) → GitResult
+   * Spawns `git` in the project root, no shell, returns { ok, stdout, stderr, code }.
+   */
+  GIT_EXEC: 'git:exec',
 } as const
 
 export type IpcChannel = (typeof IPC)[keyof typeof IPC]

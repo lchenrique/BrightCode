@@ -9,6 +9,7 @@
 
 import { contextBridge, ipcRenderer } from 'electron'
 import { IPC } from '../shared/ipc-channels'
+import type { GitResult } from '../main/git'
 
 // The IPC boundary is untyped by design — the main process trusts whatever
 // shape it gets, and the renderer re-narrows via the canonical type in
@@ -697,6 +698,12 @@ const terminal = {
   },
 }
 
+const git = {
+  exec(projectId: string, args: string[]): Promise<GitResult> {
+    return ipcRenderer.invoke(IPC.GIT_EXEC, projectId, args)
+  },
+}
+
 const electronAPI = {
   /** True when running inside the Electron wrapper. False in plain web dev. */
   isElectron: true,
@@ -719,6 +726,7 @@ const electronAPI = {
   tools,
   skills,
   terminal,
+  git,
   /** Forward a log message to the main process stdout. */
   log: rendererLog,
   /**
@@ -750,4 +758,5 @@ export type {
   TerminalCreateResult,
   TerminalDataEvent,
   TerminalExitEvent,
+  GitResult,
 }

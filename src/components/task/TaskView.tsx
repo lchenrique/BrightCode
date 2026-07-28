@@ -13,6 +13,7 @@ export function TaskView({ taskId }: { taskId: string }) {
   const task = useTask(taskId)
   const projects = useProjects()
   const [explorerOpen, setExplorerOpen] = useState(false)
+  const [envInfoOpen, setEnvInfoOpen] = useState(false)
 
   const project = useMemo<Project | null>(() => {
     if (!task?.projectId) return null
@@ -31,6 +32,7 @@ export function TaskView({ taskId }: { taskId: string }) {
 
   useEffect(() => {
     setExplorerOpen(false)
+    setEnvInfoOpen(false)
   }, [taskId])
 
   if (!task) {
@@ -42,7 +44,19 @@ export function TaskView({ taskId }: { taskId: string }) {
   }
 
   const toggleExplorer = project
-    ? () => setExplorerOpen((current) => !current)
+    ? () => {
+        setExplorerOpen((current) => !current)
+        // Close env-info when opening explorer (share same right slot)
+        if (!explorerOpen) setEnvInfoOpen(false)
+      }
+    : undefined
+
+  const toggleEnvInfo = project
+    ? () => {
+        setEnvInfoOpen((current) => !current)
+        // Close explorer when opening env-info (share same right slot)
+        if (!envInfoOpen) setExplorerOpen(false)
+      }
     : undefined
 
   return (
@@ -53,6 +67,8 @@ export function TaskView({ taskId }: { taskId: string }) {
       initialMessage={initialMessage}
       explorerOpen={explorerOpen}
       onToggleExplorer={toggleExplorer}
+      envInfoOpen={envInfoOpen}
+      onToggleEnvInfo={toggleEnvInfo}
     />
   )
 }

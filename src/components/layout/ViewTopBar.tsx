@@ -2,6 +2,7 @@ import {
   ChevronDown,
   Code2,
   FolderOpen,
+  GitBranch,
   MessageSquare,
   PanelRight,
   SquareTerminal,
@@ -38,6 +39,8 @@ export function ViewTopBar({
   onToggleTerminal,
   progressOpen,
   onToggleProgress,
+  envInfoOpen,
+  onToggleEnvInfo,
   panelLabel = 'Toggle right sidebar',
   project,
   onProjectActionError,
@@ -58,12 +61,16 @@ export function ViewTopBar({
   /** Optional: when provided, the progress toggle button renders. */
   progressOpen?: boolean
   onToggleProgress?: () => void
+  /** Opens the Environmental Information panel (git, commit, push, terminal, progress). */
+  envInfoOpen?: boolean
+  onToggleEnvInfo?: () => void
   panelLabel?: string
   /** Enables native project shortcuts in the VS Code split button. */
   project?: Project | null
   onProjectActionError?: (message: string) => void
 }) {
   const showProgressToggle = progressOpen !== undefined && onToggleProgress !== undefined
+  const showEnvToggle = envInfoOpen !== undefined && onToggleEnvInfo !== undefined
   const titleIsTab = onSelectTitleTab !== undefined
   return (
     <header className="border-border/60 flex h-12 shrink-0 items-center border-b px-2">
@@ -161,6 +168,25 @@ export function ViewTopBar({
             onClick={onToggleTerminal}
           >
             <SquareTerminal className="size-4" />
+          </button>
+        )}
+
+        {showEnvToggle && (
+          <button
+            type="button"
+            aria-label="Toggle environment info"
+            aria-pressed={envInfoOpen}
+            disabled={!project}
+            title="Environment info (git, commit, push)"
+            className={cn(
+              'inline-flex size-8 items-center justify-center rounded-md transition-colors disabled:cursor-not-allowed disabled:opacity-35',
+              envInfoOpen
+                ? 'text-foreground bg-accent/60'
+                : 'text-muted-foreground hover:text-foreground hover:bg-accent/50',
+            )}
+            onClick={onToggleEnvInfo}
+          >
+            <GitBranch className="size-4" />
           </button>
         )}
 
