@@ -717,7 +717,7 @@ function ModelSelector({ value, onChange, groups, options, emptyMessage }: Model
               />
             </div>
 
-            <div className="max-h-[min(28rem,65dvh)] overflow-y-auto p-1">
+            <div className="max-h-[min(20rem,55dvh)] overflow-y-auto p-1">
               {filteredModels.length === 0 ? (
                 <div className="text-muted-foreground px-2 py-3 text-center text-[12px]">
                   No models match &ldquo;{searchQuery.trim()}&rdquo;
@@ -771,7 +771,7 @@ function ModelSelector({ value, onChange, groups, options, emptyMessage }: Model
             </div>
           </div>
         ) : (
-          <div className="max-h-[min(28rem,65dvh)] overflow-y-auto p-1">
+          <div className="max-h-[min(20rem,55dvh)] overflow-y-auto p-1">
             {sortedGroups.map((g, i) => {
               const status = providerStatus(g)
               return (
