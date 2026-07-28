@@ -80,6 +80,14 @@ export interface ChatInputProps {
   isStreaming?: boolean
   onStop?: () => void
   /**
+   * Called whenever the textarea's non-empty status changes (true on
+   * first non-blank character, false when cleared). The parent can use
+   * it to drive UI that wants to react to "is the user composing a
+   * message on this task right now?". Debounced by the ChatInput so
+   * the parent doesn't get a callback per keystroke.
+   */
+  onTypingChange?: (typing: boolean) => void
+  /**
    * Whether the currently selected model supports image input. When
    * false, the attach button is hidden so users don't queue images
    * the model can't see.
@@ -112,6 +120,7 @@ export function ChatInput({
   autoFocus = false,
   isStreaming,
   onStop,
+  onTypingChange,
   supportsImages = true,
 }: ChatInputProps) {
   // Uncontrolled fallback for the props that callers might not wire up
@@ -230,7 +239,11 @@ export function ChatInput({
   }
 
   function removeImage(id: string) {
-    setAttachedImages((prev) => prev.filter((img) => img.id !== id))
+    setAttachedImages((prev) => {
+      const next = prev.filter((img) => img.id !== id)
+      if (next.length === 0 && !value.trim()) onTypingChange?.(false)
+      return next
+    })
   }
 
   const submit = () => {
@@ -293,7 +306,10 @@ export function ChatInput({
       <textarea
         ref={taRef}
         value={value}
-        onChange={(e) => setValue(e.target.value)}
+        onChange={(e) => {
+          setValue(e.target.value)
+          onTypingChange?.(e.target.value.length > 0)
+        }}
         onKeyDown={handleKey}
         rows={1}
         disabled={disabled}

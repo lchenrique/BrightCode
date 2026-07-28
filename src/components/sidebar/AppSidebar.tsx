@@ -50,8 +50,10 @@ import {
   useProjectsActions,
 } from '@/hooks/use-projects'
 import { useTasksByProject } from '@/hooks/use-tasks'
+import { useTaskActivity } from '@/hooks/use-task-activity'
 import { AddProjectDialog } from '@/components/projects/AddProjectDialog'
 import { agentStore, type AgentDefinition } from '@/lib/agents'
+import { cn } from '@/lib/utils'
 
 const topNav = [
   { title: 'New task', icon: Plus, accent: true },
@@ -400,6 +402,9 @@ function TaskRow({
   const [menuOpen, setMenuOpen] = useState(false)
   const [isEditing, setIsEditing] = useState(false)
   const [editTitle, setEditTitle] = useState(title)
+  // The "shine" only animates while the user is composing or the agent is
+  // streaming on this task. A merely-open task stays still.
+  const { working } = useTaskActivity(taskId)
 
   const handleSaveRename = () => {
     const trimmed = editTitle.trim()
@@ -453,7 +458,14 @@ function TaskRow({
           className="text-foreground/75 hover:text-foreground data-[active=true]:text-foreground h-7 px-2 text-[12.5px]"
           onClick={onClick}
         >
-          <span className={`truncate ${active ? 'task-title-shine' : ''}`}>{title}</span>
+          <span
+            className={cn(
+              'truncate',
+              active && working && 'task-title-shine',
+            )}
+          >
+            {title}
+          </span>
         </SidebarMenuButton>
 
         <DropdownMenuTrigger asChild>

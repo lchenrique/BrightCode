@@ -48,6 +48,7 @@ import {
 } from '@/hooks/use-provider-registry'
 import { useActiveProject } from '@/hooks/use-projects'
 import { useTask, useTasksActions } from '@/hooks/use-tasks'
+import { setTaskActivity, clearTaskActivity } from '@/hooks/use-task-activity'
 import { tasksStore } from '@/lib/tasks/store'
 import {
   buildBrightMemoryPrompt,
@@ -926,6 +927,7 @@ export function ChatSurface({
     isAtBottomRef.current = true
     setMessages(baseMessages)
     setIsStreaming(true)
+    if (taskId) setTaskActivity(taskId, 'streaming')
 
     const preparedContext = prepareConversationContext(
       baseMessages,
@@ -1432,6 +1434,7 @@ export function ChatSurface({
       const wasAborted = controller.signal.aborted
       abortRef.current = null
       setIsStreaming(false)
+      if (taskId) clearTaskActivity(taskId)
       setMessages((prev) =>
         prev.map((m) => {
           if (!m.streaming) return m
@@ -1479,6 +1482,9 @@ export function ChatSurface({
             disabled={!hasAnyModel}
             isStreaming={isStreaming}
             onStop={handleStop}
+            onTypingChange={(typing) =>
+              setTaskActivity(taskId ?? null, typing ? 'user-typing' : 'idle')
+            }
             thinking={thinking}
             onThinkingChange={setThinking}
             authMode={authMode}
