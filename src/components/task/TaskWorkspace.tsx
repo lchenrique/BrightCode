@@ -691,6 +691,7 @@ export function TaskWorkspace({
         {project && (
           <EnvironmentalInfoPanel
             project={project}
+            taskId={taskId}
             open={envInfoOpen}
             onOpenTerminal={
               project ? () => setTerminalOpen(true) : undefined
