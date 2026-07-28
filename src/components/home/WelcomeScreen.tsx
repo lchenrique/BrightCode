@@ -14,8 +14,9 @@
  */
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Folder, ChevronDown, KeyRound, Settings } from 'lucide-react'
+import { KeyRound, Settings } from 'lucide-react'
 import { ChatInput, type ModelGroup } from './ChatInput'
+import { ContextBar } from './ContextBar'
 import { FileTypeButtons } from './FileTypeButtons'
 import { GridBackground } from './GridBackground'
 import {
@@ -113,7 +114,7 @@ export function WelcomeScreen({
             <BrandMark />
           </div>
 
-          <h1 className="text-foreground text-center text-xl sm:text-2xl font-medium tracking-tight">
+          <h1 className="text-foreground text-center text-2xl sm:text-[28px] font-semibold tracking-tight">
             BrightCode makes your work easier.
           </h1>
 
@@ -158,18 +159,12 @@ export function WelcomeScreen({
             </div>
           )}
 
-          {/* Project chip — only when a project is active. */}
-          {hasAnyModel && activeProject && (
-            <div className="mt-3 inline-flex items-center gap-1.5 rounded-md border border-border/40 bg-card/40 px-2.5 py-1 text-[12px] text-foreground/85">
-              <Folder className="text-muted-foreground size-3.5" />
-              <span className="truncate">{activeProject.label}</span>
-              <ChevronDown className="text-muted-foreground/70 size-3.5" />
-            </div>
-          )}
+          {/* Context bar — workspace / mode / branch dropdowns. */}
+          {hasAnyModel && activeProject && <ContextBar />}
         </div>
 
         {/* Bottom: file type buttons (always available, no project required) */}
-        <div className="mt-6 sm:mt-10 flex w-full flex-col items-center sm:items-end gap-3">
+        <div className="mt-6 sm:mt-10 flex w-full flex-col items-center gap-3">
           <FileTypeButtons />
         </div>
       </div>

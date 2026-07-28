@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, type KeyboardEvent } from 'react'
-import { RefreshCw, Brain, ChevronDown, ChevronLeft, ArrowUp, Sparkles, Search, Check, User, UserCheck, Square, X, Image as ImageIcon } from 'lucide-react'
+import { RefreshCw, Brain, ChevronDown, ChevronLeft, ArrowUp, Sparkles, Search, Check, User, UserCheck, Square, X, Plus } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
   Popover,
@@ -339,7 +339,7 @@ export function ChatInput({
               aria-label="Attach image"
               disabled={disabled}
             >
-              <ImageIcon className="size-4" />
+              <Plus className="size-4" />
             </Button>
           )}
 
@@ -350,7 +350,7 @@ export function ChatInput({
           >
             <RefreshCw className="size-3.5 shrink-0" />
             <span className="whitespace-nowrap">
-              {authMode === 'full' ? 'Full Auth' : 'Read Only'}
+              {authMode === 'full' ? 'Full Authorization' : 'Read Only'}
             </span>
             <ChevronDown className="size-3.5 shrink-0 opacity-70" />
           </button>
@@ -381,7 +381,7 @@ export function ChatInput({
               type="button"
               onClick={onStop}
               size="icon-sm"
-              className="bg-red-500 text-white hover:bg-red-600 ml-0.5 size-7 shrink-0 rounded-md"
+              className="bg-red-500 text-white hover:bg-red-600 ml-0.5 size-7 shrink-0 rounded-full"
               aria-label="Stop"
             >
               <Square className="size-3.5" />
@@ -392,7 +392,7 @@ export function ChatInput({
               onClick={submit}
               disabled={(!value.trim() && attachedImages.length === 0) || !model || disabled}
               size="icon-sm"
-              className="bg-foreground text-background hover:bg-foreground/90 ml-0.5 size-7 shrink-0 rounded-md disabled:opacity-40"
+              className="bg-foreground text-background hover:bg-foreground/90 ml-0.5 size-7 shrink-0 rounded-full disabled:opacity-40"
               aria-label="Send"
             >
               <ArrowUp className="size-3.5" />
