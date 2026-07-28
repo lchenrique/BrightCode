@@ -10,6 +10,10 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import { IPC } from '../shared/ipc-channels'
 import type { GitResult } from '../main/git'
+import type {
+  BrightMemoryInstallResult,
+  BrightMemoryStatus,
+} from '../main/bright-memory'
 
 // The IPC boundary is untyped by design — the main process trusts whatever
 // shape it gets, and the renderer re-narrows via the canonical type in
@@ -64,6 +68,15 @@ const cli = {
   },
   detectAll(): Promise<CLIDetection[]> {
     return ipcRenderer.invoke(IPC.CLI_DETECT_ALL)
+  },
+}
+
+const brightMemory = {
+  status(): Promise<BrightMemoryStatus> {
+    return ipcRenderer.invoke(IPC.BRIGHT_MEMORY_STATUS)
+  },
+  install(): Promise<BrightMemoryInstallResult> {
+    return ipcRenderer.invoke(IPC.BRIGHT_MEMORY_INSTALL)
   },
 }
 
@@ -717,6 +730,7 @@ const electronAPI = {
   accounts,
   agents,
   cli,
+  brightMemory,
   projects,
   tasks,
   usage,
@@ -759,4 +773,6 @@ export type {
   TerminalDataEvent,
   TerminalExitEvent,
   GitResult,
+  BrightMemoryStatus,
+  BrightMemoryInstallResult,
 }

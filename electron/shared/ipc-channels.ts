@@ -18,6 +18,10 @@ export const IPC = {
   /** Detect all supported CLIs at once. */
   CLI_DETECT_ALL: 'cli:detect-all',
 
+  /** Bright Memory CLI + global agent-rule integration. */
+  BRIGHT_MEMORY_STATUS: 'bright-memory:status',
+  BRIGHT_MEMORY_INSTALL: 'bright-memory:install',
+
   /** OAuth login flow via local HTTP server + PKCE. */
   OAUTH_START: 'oauth:start',
   OAUTH_CANCEL: 'oauth:cancel',

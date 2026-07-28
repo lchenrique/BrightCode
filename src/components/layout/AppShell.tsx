@@ -15,6 +15,7 @@ import { requestProjectFileOpen } from '@/lib/projects/file-events'
 import { BashApprovalDialog } from '@/components/chat/BashApprovalDialog'
 
 import { SkillsView } from '@/components/skills/SkillsView'
+import { BrightMemoryView } from '@/components/bright-memory/BrightMemoryView'
 
 /**
  * Interface-only view switching — plain React state, no router.
@@ -26,12 +27,14 @@ import { SkillsView } from '@/components/skills/SkillsView'
  *                  the user submits the first message in `welcome`.
  * `agent`        → the agent configuration view.
  * `skills`       → skills manager and library view.
+ * `bright-memory` → Bright Memory setup and status view.
  */
 type View =
   | { kind: 'welcome' }
   | { kind: 'task'; id: string }
   | { kind: 'agent'; name: string; avatarSeed: string }
   | { kind: 'skills' }
+  | { kind: 'bright-memory' }
 
 /** Resizable sidebar width (rem), persisted across sessions. */
 const SIDEBAR_WIDTH_STORAGE_KEY = 'brightcode:sidebar-width'
@@ -146,6 +149,7 @@ export function AppShell() {
           onNewTask={() => setView({ kind: 'welcome' })}
           onOpenSearch={() => setSearchOpen(true)}
           onSelectSkills={() => setView({ kind: 'skills' })}
+          onSelectBrightMemory={() => setView({ kind: 'bright-memory' })}
           onSelectProject={handleSelectProject}
           onSelectTask={(id) => {
             const task = tasksStore.getTask(id)
@@ -174,6 +178,7 @@ export function AppShell() {
             <AgentView key={view.name} agentName={view.name} avatarSeed={view.avatarSeed} />
           )}
           {view.kind === 'skills' && <SkillsView />}
+          {view.kind === 'bright-memory' && <BrightMemoryView />}
         </main>
       </div>
 

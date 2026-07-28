@@ -37,6 +37,7 @@ import {
   Settings,
   Trash2,
   Check,
+  BrainCircuit,
 } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import { tasksStore } from '@/lib/tasks/store'
@@ -56,6 +57,7 @@ const topNav = [
   { title: 'New task', icon: Plus, accent: true },
   { title: 'Search', icon: Search },
   { title: 'Skills', icon: Sparkles },
+  { title: 'Bright Memory', icon: BrainCircuit },
   { title: 'Automation', icon: Clock },
   { title: 'Connect Mobile', icon: Smartphone },
   { title: 'Remote Control', icon: Monitor },
@@ -109,6 +111,7 @@ export function AppSidebar({
   onNewTask,
   onOpenSearch,
   onSelectSkills,
+  onSelectBrightMemory,
   onSelectProject,
   onSelectTask,
   onSelectAgent,
@@ -121,6 +124,7 @@ export function AppSidebar({
   onNewTask: () => void
   onOpenSearch: () => void
   onSelectSkills?: () => void
+  onSelectBrightMemory?: () => void
   onSelectProject: (projectId: string) => void
   /** Switch to a specific task by id. */
   onSelectTask: (id: string) => void
@@ -148,6 +152,7 @@ export function AppSidebar({
             if (title === 'New task') onNewTask()
             else if (title === 'Search') onOpenSearch()
             else if (title === 'Skills') onSelectSkills?.()
+            else if (title === 'Bright Memory') onSelectBrightMemory?.()
             else console.log('[nav]', title)
           }}
         />
@@ -585,7 +590,6 @@ function AgentRow({
 
 // (Suppression removed â€” SidebarItem is not exported from the sidebar
 // UI primitives yet; the import was a leftover from an earlier draft.)
-
 
 
 

@@ -49,7 +49,10 @@ import {
 import { useActiveProject } from '@/hooks/use-projects'
 import { useTask, useTasksActions } from '@/hooks/use-tasks'
 import { tasksStore } from '@/lib/tasks/store'
-import { buildSystemPrompt } from '@/lib/agents/system-prompt'
+import {
+  buildBrightMemoryPrompt,
+  buildSystemPrompt,
+} from '@/lib/agents/system-prompt'
 import { getAllTools } from '@/lib/agents/tools'
 import { agentStore } from '@/lib/agents'
 import { runAgent, type AgentTask } from '@/lib/agents/runner'
@@ -972,7 +975,9 @@ export function ChatSurface({
         ])
       }
       const baseSystemPrompt = systemPromptOverride
-        ? systemPromptOverride
+        ? effectiveProject
+          ? `${systemPromptOverride}\n\n${buildBrightMemoryPrompt()}`
+          : systemPromptOverride
         : buildSystemPrompt({
             project: effectiveProject,
             skills: skillCatalog,

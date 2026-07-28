@@ -48,6 +48,7 @@ import { registerToolsIpc } from './tools'
 import { registerSkillsIpc } from './skills'
 import { registerTerminalIpc } from './terminal'
 import { registerGitIpc } from './git'
+import { registerBrightMemoryIpc } from './bright-memory'
 
 // electron-store is CJS in v8; this interop makes the default import work.
 const StoreCtor = (Store as unknown as { default?: typeof Store }).default ?? Store
@@ -739,6 +740,7 @@ registerToolsIpc()
 registerSkillsIpc()
 registerTerminalIpc()
 registerGitIpc()
+registerBrightMemoryIpc()
 
 // ── App lifecycle ──────────────────────────────────────────────────────
 

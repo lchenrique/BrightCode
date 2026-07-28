@@ -21,6 +21,10 @@ BrightCode é uma aplicação desktop de alta performance construída em **Elect
   - Registro de projetos, tarefas e histórico de mensagens mantidos no processo principal (`electron-store`).
 - **Sandboxing & Tools do Agente**:
   - Ferramentas locais (`read_file`, `write_file`, `edit_file`, `list_files`, `search_files`) executadas com validação de escopo.
+- **Bright Memory Integrado**:
+  - Item dedicado no sidebar para verificar CLI e regra global.
+  - Instalação global em um clique, com validação do Markdown gerenciado.
+  - O system prompt executa `bright-memory ensure` antes de trabalho relevante e `bright-memory save` depois.
 
 ---
 
@@ -51,6 +55,23 @@ npm run lint
 npm run electron:build
 ```
 
+### Bright Memory
+
+Abra **Bright Memory** no sidebar. A tela verifica:
+
+- se o comando `bright-memory` está disponível no `PATH`;
+- se uma skill ou regra global gerenciada contém `bright-memory ensure` e `bright-memory save`.
+
+Se algo estiver ausente, clique em **Install Bright Memory**. O BrightCode valida
+Node.js 22+, Git e npm, baixa a branch oficial, compila e instala a CLI globalmente,
+executa `bright-memory setup` e confirma o Markdown global. O conteúdo do Markdown não
+é injetado no modelo: o system prompt usa uma regra canônica para evitar instruções não
+confiáveis.
+
+Cada repositório continua isolado por `.bright-memory.json`. Antes de trabalho relevante,
+o agente executa `bright-memory ensure`, que inicializa somente workspaces válidos quando
+necessário e retorna o contexto do projeto.
+
 ---
 
 ## 📂 Arquitetura do Projeto
@@ -60,6 +81,7 @@ BrightCode/
 ├── electron/
 │   ├── main/
 │   │   ├── cli-detect.ts     # Leitura de credenciais de CLIs (Codex, gcloud, Antigravity)
+│   │   ├── bright-memory.ts  # Status e instalação global do Bright Memory
 │   │   ├── oauth.ts          # Servidor HTTP local temporário + fluxo PKCE
 │   │   ├── projects.ts       # Gestão e persistência de projetos no electron-store
 │   │   ├── tasks.ts          # Persistência IPC de tarefas e mensagens
@@ -69,6 +91,7 @@ BrightCode/
 │
 ├── src/
 │   ├── components/
+│   │   ├── bright-memory/    # Setup e status do Bright Memory
 │   │   ├── chat/             # UI de Chat, AssistantTurn, ToolTimeline, ChatSurface
 │   │   ├── home/             # WelcomeScreen, ChatInput
 │   │   ├── layout/           # AppShell, AppSidebar, ViewTopBar
