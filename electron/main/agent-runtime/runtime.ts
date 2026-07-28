@@ -15,7 +15,7 @@
  */
 
 import { randomUUID } from 'crypto'
-import { type RuntimeEvent } from '../../shared/agent-protocol'
+import { type RuntimeEvent, type ThreadState } from '../../shared/agent-protocol'
 import { getEventStore, type EventStore } from './event-store'
 import { getTurnScheduler, type TurnScheduler, type StartTurnInput } from './turn-scheduler'
 
@@ -60,6 +60,8 @@ export interface Runtime {
   // ── Thread lifecycle ────────────────────────────────────────────────────
   createThread(input: CreateThreadInput): Promise<{ threadId: ThreadId }>
   openThread(input: OpenThreadInput): Promise<{ state: unknown; events: RuntimeEvent[] }>
+  getThreadState(threadId: ThreadId): ThreadState | undefined
+  readHistory(threadId: ThreadId, afterSequence?: number): Promise<RuntimeEvent[]>
   listThreads(): Promise<ThreadId[]>
   archiveThread(input: ArchiveThreadInput): Promise<void>
   forkThread(input: ForkThreadInput): Promise<{ threadId: ThreadId }>
@@ -96,7 +98,7 @@ class RuntimeImpl implements Runtime {
     const threadId = (input.id ?? (`thread_${randomUUID()}`)) as ThreadId
 
     // Open the thread (creates an empty state if file doesn't exist).
-    await this.eventStore.open(threadId)
+    if (!this.eventStore.getState(threadId)) await this.eventStore.open(threadId)
 
     // If we have an initial user message, start a turn.
     if (input.initialUserMessage && input.provider && input.modelId) {
@@ -114,8 +116,22 @@ class RuntimeImpl implements Runtime {
   }
 
   async openThread(input: OpenThreadInput): Promise<{ state: unknown; events: RuntimeEvent[] }> {
-    const result = await this.eventStore.open(input.threadId)
-    return { state: result.state, events: result.events }
+    const existing = this.eventStore.getState(input.threadId)
+    if (existing) {
+      return { state: existing, events: await this.eventStore.getEvents(input.threadId) }
+    }
+    const opened = await this.eventStore.open(input.threadId)
+    return { state: opened.state, events: opened.events }
+  }
+
+  getThreadState(threadId: ThreadId): ThreadState | undefined {
+    return this.eventStore.getState(threadId)
+  }
+
+  async readHistory(threadId: ThreadId, afterSequence = -1): Promise<RuntimeEvent[]> {
+    await this.openThread({ threadId })
+    const events = await this.eventStore.getEvents(threadId)
+    return events.filter((event) => event.sequence > afterSequence)
   }
 
   async listThreads(): Promise<ThreadId[]> {
@@ -153,7 +169,9 @@ class RuntimeImpl implements Runtime {
 
   async startTurn(input: StartTurnInput): Promise<TurnId> {
     // Ensure the thread is open.
-    await this.eventStore.open(input.threadId)
+    if (!this.eventStore.getState(input.threadId)) {
+      await this.eventStore.open(input.threadId)
+    }
     const state = this.eventStore.getState(input.threadId)
     const lastSeq = state && typeof state === 'object' && 'sequence' in state
       ? (state as { sequence: number }).sequence

@@ -115,6 +115,11 @@ class ProviderServiceImpl implements ProviderService {
   }
 
   async *run(input: RunProviderStreamInput): AsyncGenerator<ProviderEvent> {
+    if (input.provider.apiFormat === 'custom') {
+      yield* this.runCustomProvider(input)
+      return
+    }
+
     const opts = {
       timeoutMs: this.options.timeoutMs ?? 5 * 60 * 1000,
       maxRetries: this.options.maxRetries ?? 2,
@@ -341,6 +346,52 @@ class ProviderServiceImpl implements ProviderService {
   }
 
   // ── Internals ────────────────────────────────────────────────────────────
+
+  private async *runCustomProvider(
+    input: RunProviderStreamInput,
+  ): AsyncGenerator<ProviderEvent> {
+    let sequence = input.startSequence
+
+    try {
+      for await (const chunk of input.provider.stream(
+        { ...input.params, signal: input.signal },
+        input.credential,
+      )) {
+        if (input.signal?.aborted) return
+        if (chunk.type === 'message_start') {
+          yield {
+            type: 'message_start',
+            threadId: input.threadId,
+            turnId: input.turnId,
+            sequence: sequence++,
+            timestamp: Date.now(),
+            payload: {},
+          }
+          continue
+        }
+        const event = this.toProviderEvent(chunk, input, sequence)
+        if (!event) continue
+        sequence = event.sequence + 1
+        yield event
+      }
+    } catch (error) {
+      if (input.signal?.aborted) return
+      yield {
+        type: 'error',
+        threadId: input.threadId,
+        turnId: input.turnId,
+        sequence,
+        timestamp: Date.now(),
+        payload: {
+          error: {
+            message: error instanceof Error ? error.message : String(error),
+            code: 'custom-provider-error',
+            retryable: false,
+          },
+        },
+      }
+    }
+  }
 
   private processEvent(ctx: FormatContext, sseEvent: SSEEvent): StreamChunk[] {
     const result = ctx.processEvent(sseEvent)

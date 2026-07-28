@@ -166,21 +166,28 @@ class TurnSchedulerImpl implements TurnScheduler {
     }
     this.turns.set(input.threadId, turnState)
 
-    // Persist user item BEFORE starting the provider request (per architecture rule).
-    await this.appendEvent(input.threadId, this.buildUserMessageEvent(input.threadId, turnId, input.startSequence))
-    turnState.currentSequence = input.startSequence + 1
-
-    // Emit turn-start
+    // A turn must exist before the reducer can accept its items.
     await this.appendEvent(input.threadId, {
       schemaVersion: RUNTIME_SCHEMA_VERSION,
       threadId: input.threadId,
       turnId,
-      sequence: turnState.currentSequence,
+      sequence: input.startSequence,
       timestamp: Date.now(),
       type: 'turn-start',
       payload: { turnId, permissionProfile: 'workspace_write' },
     })
-    turnState.currentSequence++
+    turnState.currentSequence = input.startSequence + 1
+
+    // Persist the complete user item before the provider request starts.
+    for (const event of this.buildUserMessageEvents(
+      input.threadId,
+      turnId,
+      input.userMessage,
+      turnState.currentSequence,
+    )) {
+      await this.appendEvent(input.threadId, event)
+      turnState.currentSequence = event.sequence + 1
+    }
 
     // Run the loop async — caller does not wait for completion.
     void this.runLoop(input.threadId, turnId, input, turnState)
@@ -236,6 +243,16 @@ class TurnSchedulerImpl implements TurnScheduler {
         // Call the provider. The service emits ProviderEvents; we map them
         // to RuntimeEvents and persist.
         const stopReason = await this.runOneRound(threadId, turnId, input, turn, userMessage)
+
+        if (turn.abortController.signal.aborted) {
+          await this.finishTurn(threadId, turnId, turn, 'interrupted')
+          return
+        }
+
+        if (stopReason === 'error') {
+          await this.finishTurn(threadId, turnId, turn, 'failed')
+          return
+        }
 
         // Doom-loop detection
         if (this.detectDoomLoop(turn)) {
@@ -323,6 +340,8 @@ class TurnSchedulerImpl implements TurnScheduler {
     const itemId = `item_${randomUUID()}`
     let stopReason: 'end_turn' | 'tool_use' | 'max_tokens' | 'stop' | 'error' = 'end_turn'
     let toolSeen = false
+    let reasoningItemId: string | null = null
+    let lastToolSignature: string | null = null
 
     // Emit item-start for the agent message that will be filled by the stream.
     await this.appendEvent(threadId, {
@@ -349,8 +368,41 @@ class TurnSchedulerImpl implements TurnScheduler {
         credential: input.credential,
         signal: turn.abortController.signal,
       })) {
-        // Map ProviderEvent to RuntimeEvent(s).
-        const runtimeEvents = this.providerEventToRuntime(providerEvent, { threadId, turnId, itemId })
+        if (providerEvent.type === 'message_start') continue
+
+        if (providerEvent.type === 'thinking_delta') {
+          if (!reasoningItemId) {
+            reasoningItemId = `item_${randomUUID()}`
+            await this.appendEvent(threadId, {
+              schemaVersion: RUNTIME_SCHEMA_VERSION,
+              threadId,
+              turnId,
+              sequence: turn.currentSequence++,
+              timestamp: providerEvent.timestamp,
+              type: 'item-start',
+              payload: { itemId: reasoningItemId, turnId, kind: 'reasoning' },
+            })
+          }
+          await this.appendEvent(threadId, {
+            schemaVersion: RUNTIME_SCHEMA_VERSION,
+            threadId,
+            turnId,
+            sequence: turn.currentSequence++,
+            timestamp: providerEvent.timestamp,
+            type: 'reasoning-delta',
+            payload: {
+              itemId: reasoningItemId,
+              content: providerEvent.payload.text ?? '',
+            },
+          })
+          continue
+        }
+
+        const runtimeEvents = this.providerEventToRuntime(
+          providerEvent,
+          { threadId, turnId, itemId },
+          turn.currentSequence,
+        )
         for (const ev of runtimeEvents) {
           await this.appendEvent(threadId, ev)
           turn.currentSequence = ev.sequence + 1
@@ -359,7 +411,14 @@ class TurnSchedulerImpl implements TurnScheduler {
         if (providerEvent.type === 'message_end') {
           stopReason = providerEvent.payload.stopReason ?? 'end_turn'
         }
-        if (providerEvent.type === 'tool_use_start') toolSeen = true
+        if (providerEvent.type === 'error') stopReason = 'error'
+        if (providerEvent.type === 'tool_use_start') {
+          toolSeen = true
+          lastToolSignature = providerEvent.payload.toolName ?? ''
+        }
+        if (providerEvent.type === 'tool_use_delta' && lastToolSignature) {
+          lastToolSignature += `:${JSON.stringify(providerEvent.payload.toolInput ?? {})}`
+        }
       }
     } catch (err) {
       // Provider thrown — emit error event and fail the turn.
@@ -377,6 +436,21 @@ class TurnSchedulerImpl implements TurnScheduler {
       stopReason = 'error'
     }
 
+    if (reasoningItemId) {
+      await this.appendEvent(threadId, {
+        schemaVersion: RUNTIME_SCHEMA_VERSION,
+        threadId,
+        turnId,
+        sequence: turn.currentSequence++,
+        timestamp: Date.now(),
+        type: 'item-end',
+        payload: {
+          itemId: reasoningItemId,
+          status: turn.abortController.signal.aborted ? 'interrupted' : 'completed',
+        },
+      })
+    }
+
     // Emit item-end.
     await this.appendEvent(threadId, {
       schemaVersion: RUNTIME_SCHEMA_VERSION,
@@ -387,14 +461,18 @@ class TurnSchedulerImpl implements TurnScheduler {
       type: 'item-end',
       payload: {
         itemId,
-        status: stopReason === 'error' ? 'failed' : 'completed',
+        status: turn.abortController.signal.aborted
+          ? 'interrupted'
+          : stopReason === 'error'
+            ? 'failed'
+            : 'completed',
       },
     })
     turn.currentSequence++
 
     // Record tool sig for doom-loop detection.
-    if (toolSeen) {
-      turn.recentToolSig.push(`ts:${Date.now()}`)
+    if (toolSeen && lastToolSignature) {
+      turn.recentToolSig.push(lastToolSignature)
       if (turn.recentToolSig.length > this.config.doomLoopThreshold) turn.recentToolSig.shift()
     }
 
@@ -448,27 +526,58 @@ class TurnSchedulerImpl implements TurnScheduler {
     }
   }
 
-  private buildUserMessageEvent(
+  private buildUserMessageEvents(
     threadId: ThreadId,
     turnId: TurnId,
+    message: ChatMessage,
     sequence: number,
-  ): RuntimeEvent {
+  ): RuntimeEvent[] {
     const itemId = `item_${randomUUID()}`
-    return {
-      schemaVersion: RUNTIME_SCHEMA_VERSION,
-      threadId,
-      turnId,
-      sequence,
-      timestamp: Date.now(),
-      type: 'item-start',
-      payload: { itemId, turnId, kind: 'user-message' },
-    }
+    const blocks = Array.isArray(message.content) ? message.content : []
+    const text = typeof message.content === 'string'
+      ? message.content
+      : blocks
+          .filter((block) => block.type === 'text')
+          .map((block) => block.text)
+          .join('\n')
+    const imageRefs = blocks
+      .filter((block) => block.type === 'image')
+      .map((block) => `data:${block.mediaType};base64,${block.data}`)
+
+    return [
+      {
+        schemaVersion: RUNTIME_SCHEMA_VERSION,
+        threadId,
+        turnId,
+        sequence,
+        timestamp: Date.now(),
+        type: 'item-start',
+        payload: {
+          itemId,
+          turnId,
+          kind: 'user-message',
+          role: 'user',
+          content: { text, imageRefs: imageRefs.length > 0 ? imageRefs : undefined },
+        },
+      },
+      {
+        schemaVersion: RUNTIME_SCHEMA_VERSION,
+        threadId,
+        turnId,
+        itemId,
+        sequence: sequence + 1,
+        timestamp: Date.now(),
+        type: 'item-end',
+        payload: { itemId, status: 'completed' },
+      },
+    ]
   }
 
   /** Map a ProviderEvent onto one or more RuntimeEvents. */
   private providerEventToRuntime(
     pe: import('../../shared/providers/types').ProviderEvent,
     ctx: { threadId: ThreadId; turnId: TurnId; itemId: string },
+    sequence: number,
   ): RuntimeEvent[] {
     const base = {
       schemaVersion: RUNTIME_SCHEMA_VERSION,
@@ -482,22 +591,17 @@ class TurnSchedulerImpl implements TurnScheduler {
       case 'text_delta':
         return [{
           ...base,
-          sequence: pe.sequence,
+          sequence,
           type: 'text-delta',
           payload: { itemId: ctx.itemId, content: pe.payload.text ?? '' },
         }]
       case 'thinking_delta':
-        return [{
-          ...base,
-          sequence: pe.sequence,
-          type: 'reasoning-delta',
-          payload: { itemId: ctx.itemId, content: pe.payload.text ?? '' },
-        }]
+        return [] // handled as a dedicated reasoning item in runOneRound
       case 'tool_use_start':
         return [{
           ...base,
           itemId: pe.itemId,
-          sequence: pe.sequence,
+          sequence,
           type: 'tool-call-start',
           payload: {
             itemId: pe.itemId ?? `item_${randomUUID()}`,
@@ -509,7 +613,7 @@ class TurnSchedulerImpl implements TurnScheduler {
         return [{
           ...base,
           itemId: pe.itemId,
-          sequence: pe.sequence,
+          sequence,
           type: 'tool-call-delta',
           payload: {
             itemId: pe.itemId ?? '',
@@ -521,7 +625,7 @@ class TurnSchedulerImpl implements TurnScheduler {
         return [{
           ...base,
           itemId: pe.itemId,
-          sequence: pe.sequence,
+          sequence,
           type: 'tool-call-end',
           payload: {
             itemId: pe.itemId ?? '',
@@ -531,19 +635,11 @@ class TurnSchedulerImpl implements TurnScheduler {
           },
         }]
       case 'message_end':
-        return [{
-          ...base,
-          sequence: pe.sequence,
-          type: 'turn-complete',
-          payload: {
-            turnId: ctx.turnId,
-            status: pe.payload.stopReason === 'error' ? 'failed' : 'completed',
-          },
-        }]
+        return [] // finishTurn emits the single terminal event
       case 'error':
         return [{
           ...base,
-          sequence: pe.sequence,
+          sequence,
           type: 'error',
           payload: {
             message: pe.payload.error?.message ?? 'Unknown error',

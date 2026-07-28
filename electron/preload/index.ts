@@ -9,6 +9,17 @@
 
 import { contextBridge, ipcRenderer } from 'electron'
 import { IPC } from '../shared/ipc-channels'
+import type {
+  AgentRuntimeAPI,
+  AgentRuntimeEventEnvelope,
+  AgentRuntimeHistoryReadCommand,
+  AgentRuntimeSubscribeCommand,
+  AgentRuntimeThreadCreateCommand,
+  AgentRuntimeThreadReadCommand,
+  AgentRuntimeTurnInterruptCommand,
+  AgentRuntimeTurnStartCommand,
+} from '../shared/agent-runtime-ipc'
+import type { RuntimeEvent, ThreadState } from '../shared/agent-protocol'
 import type { GitResult } from '../main/git'
 import type {
   BrightMemoryInstallResult,
@@ -717,6 +728,70 @@ const git = {
   },
 }
 
+const agentRuntime: AgentRuntimeAPI = {
+  createThread(command: AgentRuntimeThreadCreateCommand): Promise<{ threadId: string }> {
+    return ipcRenderer.invoke(IPC.AGENT_RUNTIME_THREAD_CREATE, command)
+  },
+  readThread(command: AgentRuntimeThreadReadCommand): Promise<ThreadState> {
+    return ipcRenderer.invoke(IPC.AGENT_RUNTIME_THREAD_READ, command)
+  },
+  readHistory(command: AgentRuntimeHistoryReadCommand): Promise<RuntimeEvent[]> {
+    return ipcRenderer.invoke(IPC.AGENT_RUNTIME_HISTORY_READ, command)
+  },
+  startTurn(command: AgentRuntimeTurnStartCommand): Promise<{ turnId: string }> {
+    return ipcRenderer.invoke(IPC.AGENT_RUNTIME_TURN_START, command)
+  },
+  interruptTurn(command: AgentRuntimeTurnInterruptCommand): Promise<void> {
+    return ipcRenderer.invoke(IPC.AGENT_RUNTIME_TURN_INTERRUPT, command)
+  },
+  async subscribe(
+    command: AgentRuntimeSubscribeCommand,
+    listener: (envelope: AgentRuntimeEventEnvelope) => void,
+  ): Promise<() => void> {
+    const channel = `${IPC.AGENT_RUNTIME_EVENT}:${command.subscriptionId}`
+    const seenSequences = new Set<number>()
+    const pending: AgentRuntimeEventEnvelope[] = []
+    let ready = false
+    let closed = false
+    const emit = (envelope: AgentRuntimeEventEnvelope) => {
+      if (closed || seenSequences.has(envelope.event.sequence)) return
+      seenSequences.add(envelope.event.sequence)
+      listener(envelope)
+    }
+    const wrapped = (_event: unknown, envelope: AgentRuntimeEventEnvelope) => {
+      if (ready) emit(envelope)
+      else pending.push(envelope)
+    }
+    ipcRenderer.on(channel, wrapped)
+
+    try {
+      const result = await ipcRenderer.invoke(IPC.AGENT_RUNTIME_SUBSCRIBE, command) as {
+        state: ThreadState
+        history: RuntimeEvent[]
+      }
+      for (const event of result.history.sort((a, b) => a.sequence - b.sequence)) {
+        emit({ event, state: result.state })
+      }
+      ready = true
+      for (const envelope of pending.sort((a, b) => a.event.sequence - b.event.sequence)) {
+        emit(envelope)
+      }
+    } catch (error) {
+      ipcRenderer.off(channel, wrapped)
+      throw error
+    }
+
+    return () => {
+      if (closed) return
+      closed = true
+      ipcRenderer.off(channel, wrapped)
+      void ipcRenderer.invoke(IPC.AGENT_RUNTIME_UNSUBSCRIBE, {
+        subscriptionId: command.subscriptionId,
+      })
+    }
+  },
+}
+
 const electronAPI = {
   /** True when running inside the Electron wrapper. False in plain web dev. */
   isElectron: true,
@@ -741,6 +816,7 @@ const electronAPI = {
   skills,
   terminal,
   git,
+  agentRuntime,
   /** Forward a log message to the main process stdout. */
   log: rendererLog,
   /**

@@ -50,6 +50,16 @@ export const IPC = {
   PROVIDER_STREAM_END: 'provider:stream-end',
   PROVIDER_STREAM_ERROR: 'provider:stream-error',
 
+  // Agent Runtime V2
+  AGENT_RUNTIME_THREAD_CREATE: 'agent-runtime:thread:create',
+  AGENT_RUNTIME_THREAD_READ: 'agent-runtime:thread:read',
+  AGENT_RUNTIME_HISTORY_READ: 'agent-runtime:history:read',
+  AGENT_RUNTIME_TURN_START: 'agent-runtime:turn:start',
+  AGENT_RUNTIME_TURN_INTERRUPT: 'agent-runtime:turn:interrupt',
+  AGENT_RUNTIME_SUBSCRIBE: 'agent-runtime:events:subscribe',
+  AGENT_RUNTIME_UNSUBSCRIBE: 'agent-runtime:events:unsubscribe',
+  AGENT_RUNTIME_EVENT: 'agent-runtime:event',
+
   /**
    * Project registry. The renderer keeps a reactive cache of `projects`
    * + `activeProjectId`; the main process owns the persistent store

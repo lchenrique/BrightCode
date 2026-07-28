@@ -23,6 +23,7 @@ import type {
   ChatMessage,
   ProviderCredential,
 } from '../../electron/shared/providers/types'
+import type { RuntimeEvent } from '../../electron/shared/agent-protocol'
 
 // Mock the EventStore so tests don't hit the real filesystem.
 vi.mock('../../electron/main/agent-runtime/event-store', () => {
@@ -107,6 +108,47 @@ describe('turn-scheduler', () => {
   })
 
   describe('startTurn validation', () => {
+    it('persists the user content and emits one ordered terminal event', async () => {
+      const scheduler = getTurnScheduler()
+      const events: RuntimeEvent[] = []
+      scheduler.bindRuntime({
+        appendEvent: async (_threadId, event) => { events.push(event) },
+        getState: () => undefined,
+      })
+      const provider: IAgentProvider = {
+        ...makeProvider(),
+        apiFormat: 'custom',
+        stream: async function* () {
+          yield { type: 'message_start' }
+          yield { type: 'thinking_delta', text: 'checking' }
+          yield { type: 'text_delta', text: 'answer' }
+          yield { type: 'message_end', stopReason: 'end_turn', model: 'fake-model' }
+        },
+      }
+
+      await scheduler.startTurn({
+        threadId: 't1',
+        provider,
+        modelId: 'fake-model',
+        userMessage: makeUserMessage('hello'),
+        startSequence: 1,
+      })
+
+      await vi.waitFor(() => expect(scheduler.isActive('t1')).toBe(false))
+
+      expect(events.map((event) => event.sequence)).toEqual(
+        events.map((_event, index) => index + 1),
+      )
+      const userStart = events.find(
+        (event) => event.type === 'item-start' && event.payload.kind === 'user-message',
+      )
+      expect(userStart?.payload).toMatchObject({ content: { text: 'hello' } })
+      expect(events.filter((event) => event.type === 'turn-complete')).toHaveLength(1)
+      expect(events.some(
+        (event) => event.type === 'item-start' && event.payload.kind === 'reasoning',
+      )).toBe(true)
+    })
+
     it('refuses to start a second turn on the same thread', async () => {
       const scheduler = getTurnScheduler({ maxGlobalConcurrency: 4 })
       // Start a turn that runs indefinitely (provider keeps streaming).

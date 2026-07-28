@@ -49,6 +49,8 @@ import { registerSkillsIpc } from './skills'
 import { registerTerminalIpc } from './terminal'
 import { registerGitIpc } from './git'
 import { registerBrightMemoryIpc } from './bright-memory'
+import { registerAgentRuntimeIpc } from './agent-runtime/ipc'
+import { getRendererEntryUrl, isTrustedRendererUrl } from './renderer-security'
 
 // electron-store is CJS in v8; this interop makes the default import work.
 const StoreCtor = (Store as unknown as { default?: typeof Store }).default ?? Store
@@ -414,8 +416,12 @@ function createWindow(): void {
 
   // Open external links in the user's default browser, not in-app.
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
-    void shell.openExternal(url)
+    if (/^https?:|^mailto:/.test(url)) void shell.openExternal(url)
     return { action: 'deny' }
+  })
+
+  mainWindow.webContents.on('will-navigate', (event, url) => {
+    if (!isTrustedRendererUrl(url)) event.preventDefault()
   })
 
   mainWindow.once('ready-to-show', () => {
@@ -433,17 +439,9 @@ function createWindow(): void {
   // when running unpackaged — the Vite dev server runs on a fixed port
   // (see `vite.config.ts: server.port = 5180`). In production we load the
   // built static files from `dist/`.
-  const devUrl =
-    process.env['VITE_DEV_SERVER_URL'] ??
-    (!app.isPackaged ? 'http://localhost:5180' : undefined)
-  if (devUrl) {
-    console.log('[brightcode] loading renderer from', devUrl)
-    void mainWindow.loadURL(devUrl)
-  } else {
-    const indexPath = join(__dirname, '../../dist/index.html')
-    console.log('[brightcode] loading renderer from file', indexPath)
-    void mainWindow.loadFile(indexPath)
-  }
+  const rendererUrl = getRendererEntryUrl()
+  console.log('[brightcode] loading renderer from', rendererUrl)
+  void mainWindow.loadURL(rendererUrl)
 }
 
 // ── IPC handlers ────────────────────────────────────────────────────────
@@ -741,6 +739,7 @@ registerSkillsIpc()
 registerTerminalIpc()
 registerGitIpc()
 registerBrightMemoryIpc()
+registerAgentRuntimeIpc()
 
 // ── App lifecycle ──────────────────────────────────────────────────────
 

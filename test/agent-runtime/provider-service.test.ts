@@ -78,6 +78,40 @@ function makeFakeHandler(chunks: StreamChunk[]): FormatHandler {
 // ── Tests ──────────────────────────────────────────────────────────────────
 
 describe('provider-service', () => {
+  describe('custom provider stream', () => {
+    it('runs an in-process provider without fetch and preserves event order', async () => {
+      _resetProviderService()
+      const provider = makeProvider({
+        apiFormat: 'custom',
+        stream: async function* () {
+          yield { type: 'message_start' }
+          yield { type: 'thinking_delta', text: 'checking' }
+          yield { type: 'text_delta', text: 'hello' }
+          yield { type: 'message_end', stopReason: 'end_turn', model: 'fake' }
+        },
+      })
+
+      const events = []
+      for await (const event of getProviderService().run({
+        threadId: 'thread-1',
+        turnId: 'turn-1',
+        startSequence: 7,
+        provider,
+        params: fakeParams,
+      })) {
+        events.push(event)
+      }
+
+      expect(events.map((event) => event.type)).toEqual([
+        'message_start',
+        'thinking_delta',
+        'text_delta',
+        'message_end',
+      ])
+      expect(events.map((event) => event.sequence)).toEqual([7, 8, 9, 10])
+    })
+  })
+
   describe('stream translation (offline)', () => {
     it('translates text_delta into a ProviderEvent with monotonic sequence', async () => {
       // We can't fetch in unit tests; instead we test the translation helpers

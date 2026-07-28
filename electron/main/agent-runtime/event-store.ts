@@ -115,6 +115,7 @@ class EventStoreImpl implements EventStore {
   private states = new Map<string, ThreadState>()
   private pendingDeltas = new Map<string, RuntimeEvent[]>()
   private flushTimers = new Map<string, ReturnType<typeof setTimeout>>()
+  private writeQueues = new Map<string, Promise<void>>()
 
   async open(threadId: string): Promise<OpenThreadResult> {
     const dir = await getThreadsDir()
@@ -145,47 +146,52 @@ class EventStoreImpl implements EventStore {
       state = this.recoverPartial(events)
     }
 
-    // On startup recovery: non-terminal turns → interrupted
-    state = this.markInterrupted(state)
-
     this.states.set(threadId, state)
-    return { state, readOnly, events }
+    if (readOnly) return { state, readOnly, events }
+
+    const recoveryEvents = this.buildRecoveryEvents(state)
+    for (const recoveryEvent of recoveryEvents) {
+      await this.append(threadId, recoveryEvent)
+    }
+
+    return {
+      state: this.states.get(threadId) ?? state,
+      readOnly,
+      events: [...events, ...recoveryEvents],
+    }
   }
 
   async append(threadId: string, event: RuntimeEvent): Promise<void> {
-    // Always update state
     const currentState = this.states.get(threadId) ?? emptyThreadState(threadId)
     try {
       const nextState = reduce(currentState, event)
       this.states.set(threadId, nextState)
-    } catch {
-      // Reducer rejected the event — don't persist it
-      return
+    } catch (cause) {
+      throw new Error(
+        `Rejected runtime event ${event.type} at sequence ${event.sequence}.`,
+        { cause },
+      )
     }
 
-    const dir = await getThreadsDir()
-    const filePath = join(dir, `${threadId}.jsonl`)
-
     if (isFlushEvent(event.type)) {
-      // Immediate flush for critical events
-      await this.appendToFile(filePath, event)
-      await this.updateIndex(threadId, event.sequence)
+      await this.flush(threadId)
+      await this.enqueueWrite(threadId, async () => {
+        const dir = await getThreadsDir()
+        const filePath = join(dir, `${threadId}.jsonl`)
+        await this.appendToFile(filePath, event)
+        await this.updateIndex(threadId, event.sequence)
+      })
     } else {
-      // Coalesce text/reasoning deltas
       const pending = this.pendingDeltas.get(threadId) ?? []
       pending.push(event)
       this.pendingDeltas.set(threadId, pending)
 
-      // Reset coalescing timer
       const existing = this.flushTimers.get(threadId)
       if (existing) clearTimeout(existing)
-      const timer = setTimeout(async () => {
-        this.flushTimers.delete(threadId)
-        const deltas = this.pendingDeltas.get(threadId) ?? []
-        this.pendingDeltas.delete(threadId)
-        for (const delta of deltas) {
-          await this.appendToFile(filePath, delta)
-        }
+      const timer = setTimeout(() => {
+        void this.flush(threadId).catch(() => {
+          // A later explicit flush or append will surface persistent I/O errors.
+        })
       }, CHECKPOINT_COALESCE_MS)
       this.flushTimers.set(threadId, timer)
     }
@@ -196,12 +202,12 @@ class EventStoreImpl implements EventStore {
     if (existing) { clearTimeout(existing); this.flushTimers.delete(threadId) }
     const pending = this.pendingDeltas.get(threadId) ?? []
     this.pendingDeltas.delete(threadId)
-    if (pending.length === 0) return
-    const dir = await getThreadsDir()
-    const filePath = join(dir, `${threadId}.jsonl`)
-    for (const delta of pending) {
-      await this.appendToFile(filePath, delta)
-    }
+    await this.enqueueWrite(threadId, async () => {
+      if (pending.length === 0) return
+      const dir = await getThreadsDir()
+      const filePath = join(dir, `${threadId}.jsonl`)
+      for (const delta of pending) await this.appendToFile(filePath, delta)
+    })
   }
 
   async listThreads(): Promise<string[]> {
@@ -214,9 +220,11 @@ class EventStoreImpl implements EventStore {
     this.pendingDeltas.delete(threadId)
     const t = this.flushTimers.get(threadId)
     if (t) { clearTimeout(t); this.flushTimers.delete(threadId) }
-    const dir = await getThreadsDir()
-    const { deleteThreadFiles } = await import('./thread-index')
-    await deleteThreadFiles(dir, threadId)
+    await this.enqueueWrite(threadId, async () => {
+      const dir = await getThreadsDir()
+      const { deleteThreadFiles } = await import('./thread-index')
+      await deleteThreadFiles(dir, threadId)
+    })
   }
 
   getState(threadId: string): ThreadState | undefined {
@@ -224,6 +232,7 @@ class EventStoreImpl implements EventStore {
   }
 
   async getEvents(threadId: string, fromSeq?: number): Promise<RuntimeEvent[]> {
+    await this.flush(threadId)
     const dir = await getThreadsDir()
     const filePath = join(dir, `${threadId}.jsonl`)
     const events = await this.readEventsFromFile(filePath)
@@ -234,6 +243,17 @@ class EventStoreImpl implements EventStore {
   }
 
   // ── Internals ─────────────────────────────────────────────────────────────
+
+  private async enqueueWrite(threadId: string, operation: () => Promise<void>): Promise<void> {
+    const previous = this.writeQueues.get(threadId) ?? Promise.resolve()
+    const queued = previous.catch(() => undefined).then(operation)
+    this.writeQueues.set(threadId, queued)
+    try {
+      await queued
+    } finally {
+      if (this.writeQueues.get(threadId) === queued) this.writeQueues.delete(threadId)
+    }
+  }
 
   private async appendToFile(filePath: string, event: RuntimeEvent): Promise<void> {
     const line = JSON.stringify(event) + '\n'
@@ -289,27 +309,47 @@ class EventStoreImpl implements EventStore {
     return replay(sorted.slice(0, -1))
   }
 
-  /** Mark any non-terminal turns/items as interrupted on startup recovery. */
-  private markInterrupted(state: ThreadState): ThreadState {
-    let next = state
-    for (const [turnId, turn] of Object.entries(next.turns)) {
-      if (
-        turn.status !== 'completed' &&
-        turn.status !== 'failed' &&
-        turn.status !== 'interrupted'
-      ) {
-        next = reduce(next, {
-          schemaVersion: RUNTIME_SCHEMA_VERSION,
-          threadId: state.threadId,
-          turnId,
-          sequence: next.sequence + 1,
-          timestamp: Date.now(),
-          type: 'turn-interrupted',
-          payload: { turnId, reason: 'error' as const },
-        })
-      }
+  /** Build durable terminal events for work left active by a process crash. */
+  private buildRecoveryEvents(state: ThreadState): RuntimeEvent[] {
+    const events: RuntimeEvent[] = []
+    let sequence = state.sequence + 1
+    const timestamp = Date.now()
+
+    for (const itemId of state.itemOrder) {
+      const item = state.items[itemId]
+      if (!item || item.status !== 'in_progress') continue
+      events.push({
+        schemaVersion: RUNTIME_SCHEMA_VERSION,
+        threadId: state.threadId,
+        turnId: item.turnId,
+        itemId,
+        sequence: sequence++,
+        timestamp,
+        type: 'item-end',
+        payload: { itemId, status: 'interrupted' },
+      })
     }
-    return next
+
+    for (const turnId of state.turnOrder) {
+      const turn = state.turns[turnId]
+      if (
+        !turn ||
+        turn.status === 'completed' ||
+        turn.status === 'failed' ||
+        turn.status === 'interrupted'
+      ) continue
+      events.push({
+        schemaVersion: RUNTIME_SCHEMA_VERSION,
+        threadId: state.threadId,
+        turnId,
+        sequence: sequence++,
+        timestamp,
+        type: 'turn-interrupted',
+        payload: { turnId, reason: 'error' },
+      })
+    }
+
+    return events
   }
 }
 
@@ -321,6 +361,10 @@ let _store: EventStore | null = null
 export function getEventStore(): EventStore {
   if (!_store) _store = new EventStoreImpl()
   return _store
+}
+
+export function _resetEventStore(): void {
+  _store = null
 }
 
 /** Async generator that yields lines from a Node.js readable stream. */
