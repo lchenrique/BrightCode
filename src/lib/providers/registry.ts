@@ -115,20 +115,33 @@ class ProviderRegistry {
     this.emit()
   }
 
+  /**
+   * Resolve the credential lookup id for a provider. When the provider
+   * declares `credentialProviderId`, the registry reads/writes the
+   * shared bucket under that id (used when two providers share one API
+   * key, e.g. opencode-go and opencode-go-anthropic). Otherwise the
+   * provider's own id is used.
+   */
+  private credIdFor(providerId: string): string {
+    return this.providers.get(providerId)?.credentialProviderId ?? providerId
+  }
+
   getCredential(providerId: string): ProviderCredential | undefined {
-    const account = accountStore.getActiveAccount(providerId)
+    const credId = this.credIdFor(providerId)
+    const account = accountStore.getActiveAccount(credId)
     if (!account) return undefined
     return this.fromStored(account)
   }
 
   hasCredential(providerId: string): boolean {
-    return accountStore.listAccounts(providerId).length > 0
+    return accountStore.listAccounts(this.credIdFor(providerId)).length > 0
   }
 
   removeCredential(providerId: string): void {
-    const accounts = accountStore.listAccounts(providerId)
+    const credId = this.credIdFor(providerId)
+    const accounts = accountStore.listAccounts(credId)
     for (const acc of accounts) {
-      void accountStore.removeAccount(providerId, acc.id)
+      void accountStore.removeAccount(credId, acc.id)
     }
     this.emit()
   }
@@ -136,16 +149,16 @@ class ProviderRegistry {
   // ── Multi-account ────────────────────────────────────────────────────
 
   listAccounts(providerId: string): ProviderAccount[] {
-    return accountStore.listAccounts(providerId)
+    return accountStore.listAccounts(this.credIdFor(providerId))
   }
 
   setActiveAccount(providerId: string, accountId: string): void {
-    void accountStore.setActiveAccount(providerId, accountId)
+    void accountStore.setActiveAccount(this.credIdFor(providerId), accountId)
     this.emit()
   }
 
   getActiveAccount(providerId: string): ProviderAccount | undefined {
-    return accountStore.getActiveAccount(providerId)
+    return accountStore.getActiveAccount(this.credIdFor(providerId))
   }
 
   // ── Models ────────────────────────────────────────────────────────────
@@ -228,11 +241,12 @@ class ProviderRegistry {
     }
     const model = resolved.provider.listModels().find((m) => m.id === resolved.model)
     const requiresAuth = model?.requiresAuth !== false
+    const credId = this.credIdFor(resolved.provider.id)
 
     let credential: ProviderCredential | undefined
     if (requiresAuth) {
       if (accountId) {
-        const account = accountStore.getAccount(resolved.provider.id, accountId)
+        const account = accountStore.getAccount(credId, accountId)
         credential = account ? this.fromStored(account) : undefined
       } else {
         credential = this.getCredential(resolved.provider.id)
@@ -258,7 +272,7 @@ class ProviderRegistry {
     }
 
     if (usageData && credential) {
-      const resolvedAccountId = accountId ?? accountStore.getActiveAccount(resolved.provider.id)?.id
+      const resolvedAccountId = accountId ?? accountStore.getActiveAccount(credId)?.id
       if (resolvedAccountId) {
         const record: UsageRecord = {
           id: crypto.randomUUID(),

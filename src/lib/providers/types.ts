@@ -248,6 +248,15 @@ export type ApiFormat =
 export interface IAgentProvider {
   /** Unique id used by the registry, e.g. 'openai', 'anthropic', 'opencode-zen'. */
   readonly id: string
+  /**
+   * Optional override of the provider id used to look up the stored
+   * credential. When two providers share the same auth (for example
+   * `opencode-go` and `opencode-go-anthropic` both consume an OpenCode Go
+   * key), set this to the canonical id and the registry will resolve
+   * credentials from that bucket instead of the local `id`. Defaults to
+   * `id` when omitted.
+   */
+  readonly credentialProviderId?: string
   /** Human label, e.g. 'OpenAI', 'Anthropic', 'OpenCode Zen'. */
   readonly name: string
   /** Base URL (no trailing slash). */

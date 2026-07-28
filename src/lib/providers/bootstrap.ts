@@ -12,6 +12,7 @@ import {
   createAntigravityProvider,
   createGeminiProvider,
   createOpenAIProvider,
+  createOpenCodeGoAnthropicProvider,
   createOpenCodeGoProvider,
   createOpenCodeZenProvider,
   createMiniMaxProvider,
@@ -26,6 +27,7 @@ export function bootstrapProviders(): void {
     createAntigravityProvider(),
     createOpenCodeZenProvider(),
     createOpenCodeGoProvider(),
+    createOpenCodeGoAnthropicProvider(),
     createMiniMaxProvider(),
   ])
 }

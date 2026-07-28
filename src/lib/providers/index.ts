@@ -13,6 +13,7 @@ export { createOpenAIProvider } from './providers/openai'
 export { createAnthropicProvider } from './providers/anthropic'
 export { createOpenCodeZenProvider } from './providers/opencode-zen'
 export { createOpenCodeGoProvider } from './providers/opencode-go'
+export { createOpenCodeGoAnthropicProvider } from './providers/opencode-go-anthropic'
 export { createGeminiProvider } from './providers/gemini'
 export { createAntigravityProvider } from './providers/antigravity'
 export { createMiniMaxProvider } from './providers/minimax'
@@ -21,6 +22,7 @@ export {
   anthropicModels,
   opencodeZenModels,
   opencodeGoModels,
+  opencodeGoAnthropicModels,
   geminiModels,
   antigravityModels,
   minimaxModels,

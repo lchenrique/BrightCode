@@ -38,6 +38,13 @@ export interface CreateProviderConfig {
   apiFormat: ApiFormat
   defaultAuthMethod?: 'api_key' | 'oauth' | 'cli_detected'
   staticModels: ModelInfo[]
+  /**
+   * Optional override of the credential lookup id. When set, the registry
+   * resolves credentials from this id instead of `id`. Use when two
+   * providers share a single API key (e.g. the OpenAI-chat and Anthropic-
+   * message subsets of OpenCode Go both consume the same Go key).
+   */
+  credentialProviderId?: string
   /** Optional: pass a custom format handler instead of a built-in one. */
   customFormatHandler?: typeof openaiChatHandler
   /** Per-request model id prefix (e.g. 'opencode-go/' for OpenCode Go). */
@@ -79,6 +86,7 @@ export function createProvider(config: CreateProviderConfig): IAgentProvider {
 
   const provider: IAgentProvider = {
     id: config.id,
+    credentialProviderId: config.credentialProviderId ?? config.id,
     name: config.name,
     baseURL: config.baseURL,
     authMethod: config.defaultAuthMethod ?? 'api_key',
