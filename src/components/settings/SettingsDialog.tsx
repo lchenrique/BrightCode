@@ -22,6 +22,7 @@ import {
 import { Switch } from '@/components/ui/switch'
 import { ProvidersSettings } from './ProvidersSettings'
 import { UsageSettings } from './UsageSettings'
+import { AccountSettings } from './AccountSettings'
 import { cn } from '@/lib/utils'
 
 /* ------------------------------------------------------------------ */
@@ -377,35 +378,6 @@ function AppearanceTab() {
 }
 
 /* ------------------------------------------------------------------ */
-/* Placeholder tabs                                                     */
-/* ------------------------------------------------------------------ */
-
-const placeholders: Record<string, { title: string; description: string }> = {
-  account: {
-    title: 'Account',
-    description:
-      'Manage your profile, subscription plan and connected devices.',
-  },
-  usage: {
-    title: 'Usage & model',
-    description:
-      'Track token consumption and choose the default model for new tasks.',
-  },
-}
-
-function PlaceholderTab({ id }: { id: string }) {
-  const info = placeholders[id]
-  return (
-    <div>
-      <p className="text-foreground text-[13px] font-medium">{info.title}</p>
-      <p className="text-muted-foreground pt-1 text-[13px] leading-5">
-        {info.description}
-      </p>
-    </div>
-  )
-}
-
-/* ------------------------------------------------------------------ */
 
 export function SettingsDialog({
   open,
@@ -461,9 +433,9 @@ export function SettingsDialog({
                 <ProvidersSettings />
               ) : tab === 'usage' ? (
                 <UsageSettings />
-              ) : (
-                <PlaceholderTab id={tab} />
-              )}
+              ) : tab === 'account' ? (
+                <AccountSettings />
+              ) : null}
             </div>
           </div>
         </div>
