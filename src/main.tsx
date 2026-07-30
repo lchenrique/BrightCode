@@ -6,6 +6,7 @@ import { bootstrapProviders } from './lib/providers/bootstrap'
 import { authStore } from './lib/providers/auth/store'
 import { providerRegistry } from './lib/providers/registry'
 import { projectsStore } from './lib/projects/store'
+import { installTauriBridge } from '@/lib/tauri-bridge'
 
 // In Electron, prime the in-memory credential cache before the first
 // render so the chat picker doesn't briefly show "no models" while the
@@ -14,6 +15,7 @@ void authStore.hydrate()
 void projectsStore.hydrate()
 
 bootstrapProviders()
+installTauriBridge()
 
 // Expose the registry on `window` for DevTools / CDP inspection. Cheap
 // (a single object reference) and useful for debugging the model picker
