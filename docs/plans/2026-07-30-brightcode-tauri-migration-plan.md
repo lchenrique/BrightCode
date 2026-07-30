@@ -276,6 +276,88 @@ git commit -m "feat(tauri): scaffold Rust crate with minimal lib.rs"
 
 ---
 
+### Task 1.3.5 — Migrate vite.config.ts to Tauri (inserted during Phase 1)
+
+**Files:**
+- Modify: `vite.config.ts`
+
+**Why inserted:** Task 1.4 smoke test revealed the existing `vite.config.ts`
+still loads `vite-plugin-electron/simple` (which builds `out/main/` artifacts
+and spawns Electron) and gates `server.port: 5180` behind `isElectron`. With
+Tauri, vite must serve on 5180 unconditionally and Electron plugin must be
+fully removed.
+
+**Step 1 — Replace `vite.config.ts` with Tauri-only config**
+
+```ts
+import path from 'node:path'
+import { defineConfig } from 'vite'
+import react from '@vitejs/plugin-react'
+import tailwindcss from '@tailwindcss/vite'
+
+export default defineConfig({
+  plugins: [react(), tailwindcss()],
+  resolve: {
+    alias: {
+      '@': path.resolve(__dirname, './src'),
+    },
+  },
+  server: {
+    port: 5180,
+    strictPort: true,
+  },
+})
+```
+
+Removes:
+- `vite-plugin-electron/simple` import and registration
+- `electronEsmPackageJsonPlugin` function and call
+- `isElectron` conditional
+- `optimizeDeps.exclude` (electron-store/keytar/node-pty — no longer bundled)
+
+Keeps:
+- React, Tailwind plugins
+- `@` alias to `./src`
+- Port 5180 (now unconditional; browser dev workflow must use this port)
+
+**Step 2 — Delete stale Electron build artifacts**
+
+```bash
+rm -rf out/main out/preload
+git status --short  # expect: only vite.config.ts modified
+```
+
+**Step 3 — Smoke verify vite serves on 5180**
+
+```bash
+npm run dev > /tmp/vite-check.log 2>&1 &
+VITE_PID=$!
+sleep 8
+netstat -ano | grep ":5180" | grep LISTENING | head -1
+# Expected: at least one line showing LISTENING
+kill $VITE_PID 2>/dev/null
+tail -5 /tmp/vite-check.log
+```
+
+If vite is NOT listening on 5180, the port config didn't take effect —
+check the file matches exactly.
+
+**Step 4 — Commit**
+
+```bash
+git add vite.config.ts
+git commit -m "chore(vite): remove electron plugin, serve on 5180 for tauri"
+```
+
+**Step 5 — Verify `out/` was deleted and git is clean of Electron artifacts**
+
+```bash
+ls out/ 2>&1
+# Expected: 'No such file or directory'
+git status --short
+# Expected: only the commit, no extra changes
+```
+
 ### Task 1.3 — Wire npm scripts to launch Tauri
 
 **Files:**
