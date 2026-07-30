@@ -10,10 +10,21 @@ import {
 } from '../../electron/main/agent-runtime/event-store'
 
 const userData = vi.hoisted(() => ({ path: '' }))
+const fsControl = vi.hoisted(() => ({
+  appendFile: vi.fn(),
+  actualAppendFile: undefined as undefined | ((...args: unknown[]) => Promise<void>),
+}))
 
 vi.mock('electron', () => ({
   app: { getPath: () => userData.path },
 }))
+
+vi.mock('fs/promises', async () => {
+  const actual = await vi.importActual<typeof import('fs/promises')>('fs/promises')
+  fsControl.actualAppendFile = actual.appendFile as unknown as (...args: unknown[]) => Promise<void>
+  fsControl.appendFile.mockImplementation(fsControl.actualAppendFile)
+  return { ...actual, appendFile: fsControl.appendFile }
+})
 
 function event(
   sequence: number,
@@ -34,6 +45,8 @@ function event(
 describe('event-store persistence', () => {
   beforeEach(async () => {
     userData.path = await mkdtemp(join(tmpdir(), 'brightcode-event-store-'))
+    fsControl.appendFile.mockReset()
+    fsControl.appendFile.mockImplementation(fsControl.actualAppendFile!)
     _resetEventStore()
   })
 
@@ -121,6 +134,23 @@ describe('event-store persistence', () => {
     })
     await store.append('persist-thread', start)
     await expect(store.append('persist-thread', start)).rejects.toThrow('Rejected runtime event')
+    expect(await store.getEvents('persist-thread')).toEqual([start])
+  })
+
+  it('does not advance state when persistence fails and allows the event to be retried', async () => {
+    const store = getEventStore()
+    await store.open('persist-thread')
+    const start = event(1, 'turn-start', {
+      turnId: 'turn-1',
+      permissionProfile: 'workspace_write',
+    })
+    fsControl.appendFile.mockRejectedValueOnce(new Error('disk unavailable'))
+
+    await expect(store.append('persist-thread', start)).rejects.toThrow('disk unavailable')
+    expect(store.getState('persist-thread')?.sequence).toBe(0)
+
+    await expect(store.append('persist-thread', start)).resolves.toBeUndefined()
+    expect(store.getState('persist-thread')?.sequence).toBe(1)
     expect(await store.getEvents('persist-thread')).toEqual([start])
   })
 })

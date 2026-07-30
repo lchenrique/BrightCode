@@ -140,6 +140,12 @@ class TurnSchedulerImpl implements TurnScheduler {
   }
 
   async startTurn(input: StartTurnInput): Promise<TurnId> {
+    if (
+      Array.isArray(input.userMessage.content) &&
+      input.userMessage.content.some((block) => block.type === 'image')
+    ) {
+      throw new Error('Agent Runtime image input is not supported until bounded blob storage is available.')
+    }
     if (this.turns.has(input.threadId)) {
       throw new Error(`Cannot start turn on thread "${input.threadId}": turn already active.`)
     }
@@ -573,10 +579,6 @@ class TurnSchedulerImpl implements TurnScheduler {
           .filter((block) => block.type === 'text')
           .map((block) => block.text)
           .join('\n')
-    const imageRefs = blocks
-      .filter((block) => block.type === 'image')
-      .map((block) => `data:${block.mediaType};base64,${block.data}`)
-
     return [
       {
         schemaVersion: RUNTIME_SCHEMA_VERSION,
@@ -590,7 +592,7 @@ class TurnSchedulerImpl implements TurnScheduler {
           turnId,
           kind: 'user-message',
           role: 'user',
-          content: { text, imageRefs: imageRefs.length > 0 ? imageRefs : undefined },
+          content: { text },
         },
       },
       {
