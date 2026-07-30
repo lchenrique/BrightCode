@@ -13,5 +13,11 @@ export default defineConfig({
   server: {
     port: 5180,
     strictPort: true,
+    watch: {
+      // Ignore the Tauri Rust build output. Cargo writes to src-tauri/target/
+      // while tauri:dev is running, which races with Vite's file watcher and
+      // produces EBUSY errors. Tauri's own watcher handles src-tauri/ rebuilds.
+      ignored: ['**/src-tauri/target/**', '**/src-tauri/gen/**'],
+    },
   },
 })
