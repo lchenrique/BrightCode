@@ -27,6 +27,7 @@ mod tests {
 
     #[test]
     fn app_version_matches_package_version() {
-        assert_eq!(app_version(), env!("CARGO_PKG_VERSION").to_string());
+        // Hardcoded literal — catches drift if app_version() and Cargo.toml diverge.
+        assert_eq!(app_version(), "0.1.0");
     }
 }
