@@ -4,7 +4,17 @@ import { getAppVersion } from '@/lib/tauri-api'
 export function AppVersionBadge() {
   const [version, setVersion] = useState<string | null>(null)
   useEffect(() => {
-    getAppVersion().then(setVersion).catch(() => setVersion(null))
+    let cancelled = false
+    getAppVersion()
+      .then((v) => {
+        if (!cancelled) setVersion(v)
+      })
+      .catch(() => {
+        if (!cancelled) setVersion(null)
+      })
+    return () => {
+      cancelled = true
+    }
   }, [])
   if (!version) return null
   return (
