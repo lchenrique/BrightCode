@@ -72,9 +72,7 @@ async function waitFor(expression, timeoutMs = 12_000) {
 await send('Runtime.enable')
 await send('Page.enable')
 
-const flagUrl = `${new URL(page.url).origin}/?agentRuntimeV2=1`
-await evaluate(`location.href = ${JSON.stringify(flagUrl)}`)
-await new Promise((resolveWait) => setTimeout(resolveWait, 1_500))
+await new Promise((resolveWait) => setTimeout(resolveWait, 500))
 
 const taskTitle = 'Runtime V2 CDP'
 const taskId = await evaluate(`(async () => {
