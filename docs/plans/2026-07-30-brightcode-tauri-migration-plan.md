@@ -488,95 +488,88 @@ git commit -m "test(tauri): smoke tests for tauri.conf.json and icon files"
 TDD for the first real command. Validates the IPC plumbing is functional.
 
 **Files:**
-- Modify: `src-tauri/src/lib.rs`
-- Create: `src-tauri/tests/commands.rs`
+- Modify: `src-tauri/src/lib.rs` (add `app_version` command and unit tests)
 
-**Step 1: Write the failing test**
+> **Note:** The plan originally placed tests in `tests/commands.rs` (an
+> integration test), which requires `pub fn` imports. Making
+> `#[tauri::command]` functions `pub` collides with Tauri's multi-crate-type
+> build (`crate-type = ["staticlib", "cdylib", "rlib"]`) — the
+> macro-generated helpers (`__cmd__ping`, `__tauri_command_name_ping`, etc.)
+> get re-imported across the three crate-type compilations and trigger
+> `E0255: name defined multiple times`. The fix is to keep commands private
+> and put tests in `#[cfg(test)] mod tests` inside `lib.rs`, which has
+> access to private items. The runtime registration still works because
+> `#[tauri::command]` handles its own visibility internally.
 
-In `src-tauri/tests/commands.rs`:
-
-```rust
-use brightcode_lib::ping;
-
-#[test]
-fn ping_returns_pong() {
-    assert_eq!(ping(), "pong");
-}
-```
-
-**Step 2: Run test to verify it passes**
-
-```bash
-cargo test --manifest-path src-tauri/Cargo.toml --test commands
-```
-
-Expected: PASS (ping was implemented in Task 1.2).
-
-**Step 3: Add a failing test for a new command**
-
-In `src-tauri/src/lib.rs`, modify to expose a stub:
+**Step 1 — Write the failing tests** in a new `#[cfg(test)] mod tests` block inside `src-tauri/src/lib.rs`:
 
 ```rust
-#[tauri::command]
-pub fn app_version() -> String {
-    unimplemented!()
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn ping_returns_pong() {
+        assert_eq!(ping(), "pong");
+    }
+
+    #[test]
+    fn app_version_matches_package_version() {
+        assert_eq!(app_version(), env!("CARGO_PKG_VERSION").to_string());
+    }
 }
 ```
 
-Then update `tests/commands.rs`:
-
-```rust
-use brightcode_lib::{ping, app_version};
-
-#[test]
-fn ping_returns_pong() {
-    assert_eq!(ping(), "pong");
-}
-
-#[test]
-fn app_version_matches_package_version() {
-    assert_eq!(app_version(), env!("CARGO_PKG_VERSION").to_string());
-}
-```
-
-**Step 4: Run test to verify it fails**
-
-```bash
-cargo test --manifest-path src-tauri/Cargo.toml --test commands app_version
-```
-
-Expected: FAIL with "not yet implemented" panic.
-
-**Step 5: Implement minimal code**
-
-In `src-tauri/src/lib.rs`:
+**Step 2 — Add the `app_version` command** to `src-tauri/src/lib.rs` (keep `ping` private; the new command is also private — both are registered via `generate_handler!` and accessible to the runtime):
 
 ```rust
 #[tauri::command]
-pub fn app_version() -> String {
+fn ping() -> String {
+    "pong".into()
+}
+
+#[tauri::command]
+fn app_version() -> String {
     env!("CARGO_PKG_VERSION").to_string()
 }
+
+#[cfg_attr(mobile, tauri::mobile_entry_point)]
+pub fn run() {
+    tauri::Builder::default()
+        .invoke_handler(tauri::generate_handler![ping, app_version])
+        .run(tauri::generate_context!())
+        .expect("error while running tauri application");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn ping_returns_pong() {
+        assert_eq!(ping(), "pong");
+    }
+
+    #[test]
+    fn app_version_matches_package_version() {
+        assert_eq!(app_version(), env!("CARGO_PKG_VERSION").to_string());
+    }
+}
 ```
 
-Update the `invoke_handler!` macro:
-
-```rust
-.invoke_handler(tauri::generate_handler![ping, app_version])
-```
-
-**Step 6: Run test to verify it passes**
+**Step 3 — Run tests:**
 
 ```bash
-cargo test --manifest-path src-tauri/Cargo.toml --test commands
+cargo test --manifest-path src-tauri/Cargo.toml --lib
 ```
 
-Expected: PASS for both tests.
+Expected: 2 tests pass. (Library unit tests, not integration tests.)
 
-**Step 7: Commit**
+**Step 4 — Commit:**
 
 ```bash
-git add src-tauri/src/lib.rs src-tauri/tests/commands.rs
-git commit -m "feat(tauri): add app_version command with test"
+git add src-tauri/src/lib.rs
+git commit -m "feat(tauri): add app_version command with tests"
 ```
 
 ---
