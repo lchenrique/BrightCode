@@ -581,6 +581,11 @@ Validates the full Tauri IPC stack end-to-end.
 **Files:**
 - Modify: `src/components/home/HomePage.tsx` (or wherever the home screen lives; placeholder if no such file)
 - Create: `src/lib/tauri-api.ts`
+- Create: `test/lib/tauri-api.test.ts`
+
+> **Note:** The project uses separate test/source directories. `vitest.config.ts`
+> discovers tests only in `test/**/*.test.ts` (not `src/`). Tests for renderer
+> helpers go in `test/lib/<helper>.test.ts` to match this convention.
 
 **Step 1: Write the failing test (renderer unit test)**
 
@@ -593,7 +598,7 @@ export async function getAppVersion(): Promise<string> {
 }
 ```
 
-In `src/lib/tauri-api.test.ts`:
+In `test/lib/tauri-api.test.ts`:
 
 ```ts
 import { describe, expect, it, vi } from 'vitest'
@@ -603,7 +608,7 @@ vi.mock('@tauri-apps/api/core', () => ({
 }))
 
 import { invoke } from '@tauri-apps/api/core'
-import { getAppVersion } from './tauri-api'
+import { getAppVersion } from '../../src/lib/tauri-api'
 
 describe('tauri-api', () => {
   it('getAppVersion invokes app_version command', async () => {
@@ -618,7 +623,7 @@ describe('tauri-api', () => {
 **Step 2: Run test to verify it fails**
 
 ```bash
-npm test -- src/lib/tauri-api.test.ts
+npm test -- test/lib/tauri-api.test.ts
 ```
 
 Expected: FAIL with "not implemented".
@@ -644,39 +649,54 @@ npm install @tauri-apps/api@^2
 **Step 5: Run test to verify it passes**
 
 ```bash
-npm test -- src/lib/tauri-api.test.ts
+npm test -- test/lib/tauri-api.test.ts
 ```
 
 Expected: PASS.
 
-**Step 6: Use it in a component (manual smoke)**
-
-In any renderer component (e.g., add to the existing footer):
+**Step 6: Create a smoke component** at `src/components/home/AppVersionBadge.tsx`. This is NOT wired into the UI tree in Phase 1 — that happens in Phase 3 (renderer migration). It just needs to compile.
 
 ```tsx
 import { useEffect, useState } from 'react'
 import { getAppVersion } from '@/lib/tauri-api'
 
-// ...inside component:
-const [version, setVersion] = useState('')
-useEffect(() => {
-  getAppVersion().then(setVersion).catch(console.error)
-}, [])
-// ...render: <span>v{version}</span>
+export function AppVersionBadge() {
+  const [version, setVersion] = useState<string | null>(null)
+  useEffect(() => {
+    getAppVersion().then(setVersion).catch(() => setVersion(null))
+  }, [])
+  if (!version) return null
+  return (
+    <span className="text-xs text-muted-foreground" data-testid="app-version-badge">
+      v{version}
+    </span>
+  )
+}
 ```
 
-**Step 7: Manual smoke**
+> **Note:** Return type annotation omitted. React 19 dropped the global `JSX`
+> namespace; `JSX.Element` requires explicit `import type { JSX }`. Other
+> home components rely on inference; this matches the repo convention.
+
+**Step 7: TypeScript compile check**
 
 ```bash
-npm run tauri:dev
+npx tsc -b
 ```
 
-Expected: version string appears in the Tauri window.
+Expected: clean (no errors).
 
 **Step 8: Commit**
 
 ```bash
-git add src/lib/tauri-api.ts src/lib/tauri-api.test.ts package.json package-lock.json
+git add src/lib/tauri-api.ts test/lib/tauri-api.test.ts src/components/home/AppVersionBadge.tsx package.json package-lock.json
+git commit -m "feat(tauri): renderer invokes app_version command via tauri-api wrapper"
+```
+
+**Step 8: Commit**
+
+```bash
+git add src/lib/tauri-api.ts test/lib/tauri-api.test.ts package.json package-lock.json
 git commit -m "feat(tauri): renderer invokes app_version command"
 ```
 
