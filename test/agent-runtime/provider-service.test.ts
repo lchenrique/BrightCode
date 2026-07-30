@@ -52,7 +52,7 @@ const fakeParams: StreamParams = {
 }
 
 /** Build a fake FormatHandler that yields a fixed chunk sequence. */
-function makeFakeHandler(chunks: StreamChunk[]): FormatHandler {
+function makeFakeHandler(_chunks: StreamChunk[]): FormatHandler {
   const ctx: FormatContext = {
     processEvent: () => null,
     finalize: () => null,
@@ -86,6 +86,11 @@ describe('provider-service', () => {
         stream: async function* () {
           yield { type: 'message_start' }
           yield { type: 'thinking_delta', text: 'checking' }
+          yield {
+            type: 'provider_output_item',
+            provider: 'openai-responses',
+            item: { id: 'reasoning-1', type: 'reasoning', encrypted_content: 'encrypted' },
+          }
           yield { type: 'text_delta', text: 'hello' }
           yield { type: 'message_end', stopReason: 'end_turn', model: 'fake' }
         },
@@ -105,10 +110,16 @@ describe('provider-service', () => {
       expect(events.map((event) => event.type)).toEqual([
         'message_start',
         'thinking_delta',
+        'provider_output_item',
         'text_delta',
         'message_end',
       ])
-      expect(events.map((event) => event.sequence)).toEqual([7, 8, 9, 10])
+      expect(events.map((event) => event.sequence)).toEqual([7, 8, 9, 10, 11])
+      expect(events[2]?.payload.providerOutputItem).toEqual({
+        id: 'reasoning-1',
+        type: 'reasoning',
+        encrypted_content: 'encrypted',
+      })
     })
   })
 
@@ -188,6 +199,37 @@ describe('provider-service', () => {
         input: { path: '/a/b' },
       }
       expect(chunk.input).toEqual({ path: '/a/b' })
+    })
+  })
+
+  describe('retry cancellation', () => {
+    it('aborts during rate-limit backoff without another fetch', async () => {
+      _resetProviderService()
+      const fetchMock = vi.fn(async () => new Response('', { status: 429 }))
+      vi.stubGlobal('fetch', fetchMock)
+      const controller = new AbortController()
+      const events: unknown[] = []
+      const run = (async () => {
+        for await (const event of getProviderService({ maxRetries: 2 }).run({
+          threadId: 'thread-abort',
+          turnId: 'turn-abort',
+          startSequence: 0,
+          provider: makeProvider(),
+          params: fakeParams,
+          credential: { method: 'api_key', apiKey: 'test-key' },
+          signal: controller.signal,
+        })) {
+          events.push(event)
+        }
+      })()
+
+      await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledOnce())
+      controller.abort()
+      await run
+      vi.unstubAllGlobals()
+
+      expect(fetchMock).toHaveBeenCalledOnce()
+      expect(events).toEqual([])
     })
   })
 

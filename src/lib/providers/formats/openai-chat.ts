@@ -173,11 +173,18 @@ function mapMessagesToOpenAI(
       continue
     }
     if (m.role === 'tool') {
-      out.push({
-        role: 'tool',
-        tool_call_id: (m as unknown as { toolCallId?: string; id?: string }).toolCallId ?? (m as unknown as { id?: string }).id ?? '',
-        content: typeof m.content === 'string' ? m.content : '',
-      })
+      if (typeof m.content === 'string') {
+        out.push({ role: 'tool', tool_call_id: m.toolCallId ?? '', content: m.content })
+        continue
+      }
+      for (const block of m.content) {
+        if (block.type !== 'tool_result') continue
+        out.push({
+          role: 'tool',
+          tool_call_id: block.toolUseId,
+          content: block.content,
+        })
+      }
     }
   }
   return out
@@ -206,9 +213,11 @@ function responsesFunctionCallItem(
     call_id: toolCall.id,
     name: toolCall.name,
     arguments:
-      typeof toolCall.input === 'string'
-        ? toolCall.input
-        : JSON.stringify(toolCall.input ?? {}),
+      typeof providerItem?.arguments === 'string'
+        ? providerItem.arguments
+        : typeof toolCall.input === 'string'
+          ? toolCall.input
+          : JSON.stringify(toolCall.input ?? {}),
   }
 }
 
@@ -285,20 +294,26 @@ export const openaiChatHandler: FormatHandler = {
             })
           }
         } else if (m.role === 'tool') {
-          const toolCallId = (m as unknown as { toolCallId?: string; id?: string }).toolCallId ?? (m as unknown as { id?: string }).id ?? ''
-          if (
-            !toolCallId ||
-            !knownToolCallIds.has(toolCallId) ||
-            resolvedToolCallIds.has(toolCallId)
-          ) {
-            continue
+          const toolResults = typeof m.content === 'string'
+            ? [{ toolUseId: m.toolCallId ?? '', content: m.content }]
+            : m.content
+                .filter((block) => block.type === 'tool_result')
+                .map((block) => ({ toolUseId: block.toolUseId, content: block.content }))
+          for (const toolResult of toolResults) {
+            if (
+              !toolResult.toolUseId ||
+              !knownToolCallIds.has(toolResult.toolUseId) ||
+              resolvedToolCallIds.has(toolResult.toolUseId)
+            ) {
+              continue
+            }
+            input.push({
+              type: 'function_call_output',
+              call_id: toolResult.toolUseId,
+              output: toolResult.content,
+            })
+            resolvedToolCallIds.add(toolResult.toolUseId)
           }
-          input.push({
-            type: 'function_call_output',
-            call_id: toolCallId,
-            output: typeof m.content === 'string' ? m.content : JSON.stringify(m.content),
-          })
-          resolvedToolCallIds.add(toolCallId)
         }
       }
 

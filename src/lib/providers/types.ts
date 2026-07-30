@@ -137,7 +137,7 @@ export type StreamChunk =
   | { type: 'tool_use_end'; id: string }
   | {
       type: 'provider_output_item'
-      provider: 'openai-responses'
+      provider: 'openai-responses' | 'anthropic-messages' | 'gemini-native'
       item: Record<string, unknown>
     }
   | {
@@ -160,8 +160,19 @@ export type ContentBlock =
       input: unknown
       providerItem?: Record<string, unknown>
     }
-  | { type: 'tool_result'; toolUseId: string; content: string; isError?: boolean }
-  | { type: 'thinking'; text: string; signature?: string }
+  | {
+      type: 'tool_result'
+      toolUseId: string
+      toolName?: string
+      content: string
+      isError?: boolean
+    }
+  | {
+      type: 'thinking'
+      text: string
+      signature?: string
+      providerItem?: Record<string, unknown>
+    }
 
 export type ChatMessageRole = 'system' | 'user' | 'assistant' | 'tool'
 

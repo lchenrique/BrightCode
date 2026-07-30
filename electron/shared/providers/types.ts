@@ -47,6 +47,7 @@ export type ProviderEventType =
   | 'message_start'
   | 'text_delta'
   | 'thinking_delta'
+  | 'provider_output_item'
   | 'tool_use_start'
   | 'tool_use_delta'
   | 'tool_use_end'
@@ -64,6 +65,9 @@ export interface ProviderEvent {
   timestamp: number
   payload: {
     text?: string
+    provider?: 'openai-responses' | 'anthropic-messages' | 'gemini-native'
+    providerOutputItem?: Record<string, unknown>
+    providerItem?: Record<string, unknown>
     toolName?: string
     toolInput?: unknown
     stopReason?: 'end_turn' | 'tool_use' | 'max_tokens' | 'stop' | 'error'

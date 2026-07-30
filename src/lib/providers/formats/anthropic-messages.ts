@@ -43,7 +43,7 @@ const DEFAULT_MAX_TOKENS = 4096
 type AnthropicEvent =
   | { type: 'message_start'; message: { model: string; usage?: { input_tokens?: number; cache_read_input_tokens?: number; cache_creation_input_tokens?: number } } }
   | { type: 'content_block_start'; index: number; content_block: { type: 'text' | 'thinking' | 'tool_use'; id?: string; name?: string; text?: string; thinking?: string; input?: unknown } }
-  | { type: 'content_block_delta'; index: number; delta: { type: 'text_delta' | 'thinking_delta' | 'input_json_delta'; text?: string; thinking?: string; partial_json?: string } }
+  | { type: 'content_block_delta'; index: number; delta: { type: 'text_delta' | 'thinking_delta' | 'signature_delta' | 'input_json_delta'; text?: string; thinking?: string; signature?: string; partial_json?: string } }
   | { type: 'content_block_stop'; index: number }
   | { type: 'message_delta'; delta: { stop_reason?: string; stop_sequence?: string | null }; usage?: { output_tokens?: number } }
   | { type: 'message_stop' }
@@ -78,23 +78,30 @@ function mapMessagesToAnthropic(messages: ChatMessage[]): Array<Record<string, u
           role: 'assistant',
           content: blocks.map((b) => {
             if (b.type === 'text') return { type: 'text', text: b.text }
-            if (b.type === 'thinking') return { type: 'thinking', thinking: b.text, ...(b.signature ? { signature: b.signature } : {}) }
+            if (b.type === 'thinking') {
+              return b.providerItem?.type === 'thinking'
+                ? b.providerItem
+                : { type: 'thinking', thinking: b.text, ...(b.signature ? { signature: b.signature } : {}) }
+            }
             if (b.type === 'tool_use') return { type: 'tool_use', id: b.id, name: b.name, input: b.input ?? {} }
             return null
           }).filter(Boolean),
         })
       }
     } else if (m.role === 'tool') {
+      const toolResults = Array.isArray(m.content)
+        ? m.content.filter((block) => block.type === 'tool_result')
+        : []
       out.push({
         role: 'user',
-        content: [
-          {
-            type: 'tool_result',
-            tool_use_id: m.toolCallId,
-            content: typeof m.content === 'string' ? m.content : '',
-            ...(m.toolName ? { tool_name: m.toolName } : {}),
-          },
-        ],
+        content: typeof m.content === 'string'
+          ? [{ type: 'tool_result', tool_use_id: m.toolCallId, content: m.content }]
+          : toolResults.map((block) => ({
+              type: 'tool_result',
+              tool_use_id: block.toolUseId,
+              content: block.content,
+              ...(block.isError !== undefined ? { is_error: block.isError } : {}),
+            })),
       })
     }
   }
@@ -190,6 +197,7 @@ export const anthropicMessagesHandler: FormatHandler = {
 
     // Per-content-block state for tool_use argument accumulation
     const toolBlocks = new Map<number, { id: string; name: string; args: string }>()
+    const thinkingBlocks = new Map<number, { text: string; signature: string }>()
 
     function processEvent(event: SSEEvent): StreamChunk | null {
       if (!event.event) return null
@@ -219,8 +227,9 @@ export const anthropicMessagesHandler: FormatHandler = {
             toolBlocks.set(parsed.index, { id: block.id, name: block.name, args: '' })
             return { type: 'tool_use_start', id: block.id, name: block.name }
           }
-          if (block.type === 'thinking' && block.thinking) {
-            return { type: 'thinking_delta', text: block.thinking }
+          if (block.type === 'thinking') {
+            thinkingBlocks.set(parsed.index, { text: block.thinking ?? '', signature: '' })
+            return block.thinking ? { type: 'thinking_delta', text: block.thinking } : null
           }
           return null
         }
@@ -231,7 +240,15 @@ export const anthropicMessagesHandler: FormatHandler = {
             return { type: 'text_delta', text: delta.text }
           }
           if (delta.type === 'thinking_delta' && delta.thinking) {
+            const block = thinkingBlocks.get(parsed.index) ?? { text: '', signature: '' }
+            block.text += delta.thinking
+            thinkingBlocks.set(parsed.index, block)
             return { type: 'thinking_delta', text: delta.thinking }
+          }
+          if (delta.type === 'signature_delta' && delta.signature) {
+            const block = thinkingBlocks.get(parsed.index) ?? { text: '', signature: '' }
+            block.signature += delta.signature
+            thinkingBlocks.set(parsed.index, block)
           }
           if (delta.type === 'input_json_delta' && delta.partial_json) {
             const buf = toolBlocks.get(parsed.index)
@@ -253,6 +270,19 @@ export const anthropicMessagesHandler: FormatHandler = {
           const buf = toolBlocks.get(parsed.index)
           if (buf) {
             return { type: 'tool_use_end', id: buf.id }
+          }
+          const thinking = thinkingBlocks.get(parsed.index)
+          if (thinking) {
+            thinkingBlocks.delete(parsed.index)
+            return {
+              type: 'provider_output_item',
+              provider: 'anthropic-messages',
+              item: {
+                type: 'thinking',
+                thinking: thinking.text,
+                signature: thinking.signature,
+              },
+            }
           }
           return null
         }

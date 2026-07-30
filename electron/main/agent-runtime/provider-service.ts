@@ -129,6 +129,7 @@ class ProviderServiceImpl implements ProviderService {
     let sequence = input.startSequence
 
     while (attempt <= opts.maxRetries) {
+      if (input.signal?.aborted) return
       const ctx = handler.createContext()
       const request = handler.buildRequest(input.params, input.credential, input.provider.baseURL)
 
@@ -166,7 +167,7 @@ class ProviderServiceImpl implements ProviderService {
             // Rate limit — may retry once.
             if (attempt < opts.maxRetries) {
               attempt++
-              await this.backoff(attempt)
+              await this.backoff(attempt, input.signal)
               continue
             }
             yield {
@@ -189,7 +190,7 @@ class ProviderServiceImpl implements ProviderService {
             // Server error — retryable.
             if (attempt < opts.maxRetries) {
               attempt++
-              await this.backoff(attempt)
+              await this.backoff(attempt, input.signal)
               continue
             }
             yield {
@@ -321,7 +322,7 @@ class ProviderServiceImpl implements ProviderService {
         if (isConnectivityError(err)) {
           if (attempt < opts.maxRetries) {
             attempt++
-            await this.backoff(attempt)
+            await this.backoff(attempt, input.signal)
             continue
           }
         }
@@ -433,7 +434,10 @@ class ProviderServiceImpl implements ProviderService {
           sequence,
           timestamp: Date.now(),
           itemId: chunk.id,
-          payload: { toolName: chunk.name },
+          payload: {
+            toolName: chunk.name,
+            providerItem: chunk.providerItem,
+          },
         }
       case 'tool_use_delta':
         return {
@@ -443,7 +447,11 @@ class ProviderServiceImpl implements ProviderService {
           sequence,
           timestamp: Date.now(),
           itemId: chunk.id,
-          payload: { toolInput: chunk.input },
+          payload: {
+            toolInput: chunk.input,
+            toolName: chunk.name,
+            providerItem: chunk.providerItem,
+          },
         }
       case 'tool_use_end':
         return {
@@ -480,15 +488,30 @@ class ProviderServiceImpl implements ProviderService {
           },
         }
       case 'provider_output_item':
-        // Future: do not surface to the runtime directly; the provider
-        // service keeps the native item for stateless continuation.
-        return null
+        return {
+          type: 'provider_output_item',
+          threadId: input.threadId,
+          turnId: input.turnId,
+          sequence,
+          timestamp: Date.now(),
+          payload: {
+            provider: chunk.provider,
+            providerOutputItem: chunk.item,
+          },
+        }
     }
   }
 
-  private async backoff(attempt: number): Promise<void> {
+  private async backoff(attempt: number, signal?: AbortSignal): Promise<void> {
+    if (signal?.aborted) return
     const delayMs = Math.min(1000 * 2 ** attempt, 10_000)
-    await new Promise((resolve) => setTimeout(resolve, delayMs))
+    await new Promise<void>((resolve) => {
+      const timeout = setTimeout(resolve, delayMs)
+      signal?.addEventListener('abort', () => {
+        clearTimeout(timeout)
+        resolve()
+      }, { once: true })
+    })
   }
 }
 

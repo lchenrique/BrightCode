@@ -597,6 +597,8 @@ class TurnSchedulerImpl implements TurnScheduler {
         }]
       case 'thinking_delta':
         return [] // handled as a dedicated reasoning item in runOneRound
+      case 'provider_output_item':
+        return [] // consumed by model adapters for stateless provider replay
       case 'tool_use_start':
         return [{
           ...base,
