@@ -8,11 +8,11 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
-    "lint": "oxlint",
     "preview": "vite preview",
-    "electron:dev": "cross-env ELECTRON=1 vite",
-    "electron:build": "npm run build && electron-builder",
-    "electron:preview": "cross-env ELECTRON=1 vite preview",
+    "tauri": "tauri",
+    "tauri:dev": "tauri dev",
+    "tauri:build": "tauri build",
+    "lint": "oxlint",
     "test": "vitest run",
     "test:watch": "vitest"
   },
