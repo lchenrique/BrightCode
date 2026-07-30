@@ -1,3 +1,8 @@
+//! Smoke tests for Tauri build prerequisites.
+//!
+//! Intentionally validates JSON syntax + icon presence only,
+//! not full schema conformance (see plan 2026-07-30-brightcode-tauri-migration-plan).
+
 use std::path::Path;
 
 fn manifest_dir() -> &'static Path {
