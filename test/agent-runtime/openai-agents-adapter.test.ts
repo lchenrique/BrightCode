@@ -339,7 +339,7 @@ describe('OpenAI Agents SDK adapter', () => {
     expect(providerCalls).toBe(2)
   })
 
-  it('maps Gemini toolChoice none to native function calling config', () => {
+  it('omits Gemini tools when toolChoice is none', () => {
     const body = JSON.parse(geminiNativeHandler.buildRequest({
       model: 'gemini-3',
       messages: [{ role: 'user', content: 'hello' }],
@@ -351,7 +351,8 @@ describe('OpenAI Agents SDK adapter', () => {
       toolChoice: 'none',
     }, { method: 'api_key', apiKey: 'test-key' }, 'https://generativelanguage.googleapis.com').init.body as string)
 
-    expect(body.toolConfig).toEqual({ functionCallingConfig: { mode: 'NONE' } })
+    expect(body.tools).toBeUndefined()
+    expect(body.toolConfig).toBeUndefined()
   })
 
   it('preserves raw OpenAI Responses arguments through a Runner continuation', async () => {

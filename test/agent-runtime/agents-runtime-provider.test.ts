@@ -38,12 +38,17 @@ describe('Agents SDK runtime provider', () => {
     const chunks = []
     for await (const chunk of runtimeProvider.stream({
       model: 'fake-model',
-      messages: [{ role: 'user', content: 'hello' }],
+      messages: [
+        { role: 'user', content: 'earlier' },
+        { role: 'assistant', content: 'previous answer' },
+        { role: 'user', content: 'hello' },
+      ],
     })) chunks.push(chunk)
 
     expect(chunks.map((chunk) => chunk.type)).toEqual(['message_start', 'text_delta', 'message_end'])
     expect(chunks[1]).toMatchObject({ type: 'text_delta', text: 'ok' })
     expect(calls[0]?.params.model).toBe('fake-model')
+    expect(calls[0]?.params.messages.map((message) => message.role)).toEqual(['user', 'assistant', 'user'])
     expect(calls[0]?.credential?.apiKey).toBe('secret')
   })
 })

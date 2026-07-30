@@ -143,7 +143,7 @@ function buildRequest(
     ...(params.maxTokens ? { maxOutputTokens: params.maxTokens } : {}),
     ...(params.temperature !== undefined ? { temperature: params.temperature } : {}),
   }
-  if (params.tools && params.tools.length > 0) {
+  if (params.tools && params.tools.length > 0 && params.toolChoice !== 'none') {
     body.tools = [{
       functionDeclarations: params.tools.map((t) => ({
         name: t.name,
@@ -152,11 +152,9 @@ function buildRequest(
       })),
     }]
     body.toolConfig = {
-      functionCallingConfig: params.toolChoice === 'none'
-        ? { mode: 'NONE' }
-        : typeof params.toolChoice === 'object'
-          ? { mode: 'ANY', allowedFunctionNames: [params.toolChoice.name] }
-          : { mode: 'AUTO' },
+      functionCallingConfig: typeof params.toolChoice === 'object'
+        ? { mode: 'ANY', allowedFunctionNames: [params.toolChoice.name] }
+        : { mode: 'AUTO' },
     }
   }
 

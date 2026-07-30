@@ -87,6 +87,8 @@ interface TurnState {
   rounds: number
   /** Hash of recent tool calls for doom-loop detection. */
   recentToolSig: string[]
+  /** Full stateless prompt history for each model round. */
+  messages: ChatMessage[]
   /** Queued user messages waiting to be steered in. */
   queue: ChatMessage[]
 }
@@ -162,8 +164,10 @@ class TurnSchedulerImpl implements TurnScheduler {
       currentSequence: input.startSequence,
       rounds: 0,
       recentToolSig: [],
+      messages: await this.loadMessageHistory(input.threadId),
       queue: [input.userMessage],
     }
+    turnState.messages.push(input.userMessage)
     this.turns.set(input.threadId, turnState)
 
     // A turn must exist before the reducer can accept its items.
@@ -242,7 +246,7 @@ class TurnSchedulerImpl implements TurnScheduler {
 
         // Call the provider. The service emits ProviderEvents; we map them
         // to RuntimeEvents and persist.
-        const stopReason = await this.runOneRound(threadId, turnId, input, turn, userMessage)
+        const stopReason = await this.runOneRound(threadId, turnId, input, turn)
 
         if (turn.abortController.signal.aborted) {
           await this.finishTurn(threadId, turnId, turn, 'interrupted')
@@ -335,7 +339,6 @@ class TurnSchedulerImpl implements TurnScheduler {
     turnId: TurnId,
     input: StartTurnInput,
     turn: TurnState,
-    userMessage: ChatMessage,
   ): Promise<'end_turn' | 'tool_use' | 'max_tokens' | 'stop' | 'error'> {
     const itemId = `item_${randomUUID()}`
     let stopReason: 'end_turn' | 'tool_use' | 'max_tokens' | 'stop' | 'error' = 'end_turn'
@@ -363,7 +366,7 @@ class TurnSchedulerImpl implements TurnScheduler {
         provider: input.provider,
         params: {
           model: input.modelId,
-          messages: [userMessage],
+          messages: [...turn.messages],
         },
         credential: input.credential,
         signal: turn.abortController.signal,
@@ -524,6 +527,36 @@ class TurnSchedulerImpl implements TurnScheduler {
     } else {
       await this.eventStore.append(threadId, event)
     }
+  }
+
+  private async loadMessageHistory(threadId: ThreadId): Promise<ChatMessage[]> {
+    const state = this.eventStore.getState(threadId)
+    if (!state || !Array.isArray(state.itemOrder) || !state.items) return []
+    const messages: ChatMessage[] = []
+    for (const itemId of state.itemOrder) {
+      const item = state.items[itemId]
+      if (!item) continue
+      if (item.kind === 'user-message') {
+        const content = item.imageRefs?.length
+          ? [
+              { type: 'text' as const, text: item.text },
+              ...item.imageRefs.flatMap((ref) => {
+                const comma = ref.indexOf(',')
+                if (!ref.startsWith('data:') || comma < 0) return []
+                return [{
+                  type: 'image' as const,
+                  mediaType: ref.slice(5, comma).replace(';base64', ''),
+                  data: ref.slice(comma + 1),
+                }]
+              }),
+            ]
+          : item.text
+        messages.push({ role: 'user', content })
+      } else if (item.kind === 'agent-message' && item.text) {
+        messages.push({ role: 'assistant', content: item.text })
+      }
+    }
+    return messages
   }
 
   private buildUserMessageEvents(

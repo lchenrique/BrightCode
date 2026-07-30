@@ -154,7 +154,9 @@ class RuntimeImpl implements Runtime {
 
     // Copy events up to fork point.
     const atSeq = input.atSequence ?? source.events[source.events.length - 1]?.sequence ?? 0
-    const eventsToCopy = source.events.filter((e) => e.sequence <= atSeq)
+    const eventsToCopy = source.events
+      .filter((event) => event.sequence <= atSeq)
+      .map((event) => ({ ...event, threadId: newThreadId }))
 
     // Create the new thread (without starting a turn).
     await this.eventStore.open(newThreadId)

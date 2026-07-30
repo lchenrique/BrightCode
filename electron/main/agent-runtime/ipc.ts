@@ -14,7 +14,6 @@ import {
 } from '../../shared/agent-runtime-ipc'
 import { IPC } from '../../shared/ipc-channels'
 import { assertTrustedIpcSender } from '../renderer-security'
-import { FAKE_RUNTIME_MODEL_ID, fakeRuntimeProvider } from './fake-runtime-provider'
 import { createAgentsRuntimeProvider } from './agents-runtime-provider'
 import { getRuntime } from './runtime'
 import type { BrightCodeAgentsModelBinding } from './openai-agents-adapter'
@@ -121,8 +120,13 @@ export function registerAgentRuntimeIpc(): void {
         ]
       : command.text
     const binding = providerResolver?.resolve(command.modelId, command.accountId)
-    const provider = binding ? createAgentsRuntimeProvider(binding) : fakeRuntimeProvider
-    const modelId = binding?.modelId ?? FAKE_RUNTIME_MODEL_ID
+    if (!binding) {
+      throw new Error(
+        `No valid Agent Runtime model/account selection for model "${command.modelId ?? 'default'}".`,
+      )
+    }
+    const provider = createAgentsRuntimeProvider(binding)
+    const modelId = binding.modelId
     const turnId = await runtime.startTurn({
       threadId: command.threadId,
       provider,

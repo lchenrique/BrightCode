@@ -246,8 +246,7 @@ export function TaskWorkspace({
   envInfoOpen: boolean
   onToggleEnvInfo?: () => void
 }) {
-  const agentRuntimeV2 = new URLSearchParams(window.location.search)
-    .get('agentRuntimeV2') === '1'
+  const agentRuntimeV2 = true
   const [tabs, setTabs] = useState<OpenFile[]>([])
   const [activeSurface, setActiveSurface] = useState<'chat' | 'file'>('chat')
   const [selectedFilePath, setSelectedFilePath] = useState<string | null>(null)

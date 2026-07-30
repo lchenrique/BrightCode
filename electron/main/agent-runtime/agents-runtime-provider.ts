@@ -12,31 +12,43 @@ import {
 } from './openai-agents-adapter'
 import { getProviderService, type ProviderService } from './provider-service'
 
-function lastUserText(params: StreamParams): string {
-  const message = [...params.messages].reverse().find((item) => item.role === 'user')
-  if (!message) return ''
-  if (typeof message.content === 'string') return message.content
-  return message.content
+function messageText(content: StreamParams['messages'][number]['content']): string {
+  if (typeof content === 'string') return content
+  return content
     .filter((block) => block.type === 'text')
     .map((block) => block.text)
     .join('\n')
 }
 
 function agentInput(params: StreamParams): string | AgentInputItem[] {
-  const message = [...params.messages].reverse().find((item) => item.role === 'user')
-  if (!message || typeof message.content === 'string') return lastUserText(params)
-  const content: Array<
-    | { type: 'input_text'; text: string }
-    | { type: 'input_image'; image: string }
-  > = []
-  for (const block of message.content) {
-    if (block.type === 'text') {
-      content.push({ type: 'input_text', text: block.text })
-    } else if (block.type === 'image') {
-      content.push({ type: 'input_image', image: `data:${block.mediaType};base64,${block.data}` })
+  const input: AgentInputItem[] = []
+  for (const message of params.messages) {
+    if (message.role === 'user') {
+      if (typeof message.content === 'string') {
+        input.push({ role: 'user', content: [{ type: 'input_text', text: message.content }] })
+        continue
+      }
+      const content: Array<
+        | { type: 'input_text'; text: string }
+        | { type: 'input_image'; image: string }
+      > = []
+      for (const block of message.content) {
+        if (block.type === 'text') {
+          content.push({ type: 'input_text', text: block.text })
+        } else if (block.type === 'image') {
+          content.push({ type: 'input_image', image: `data:${block.mediaType};base64,${block.data}` })
+        }
+      }
+      input.push({ role: 'user', content })
+    } else if (message.role === 'assistant') {
+      input.push({
+        role: 'assistant',
+        status: 'completed',
+        content: [{ type: 'output_text', text: messageText(message.content) }],
+      })
     }
   }
-  return [{ role: 'user', content }]
+  return input
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

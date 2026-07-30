@@ -115,7 +115,7 @@ export function AgentRuntimeTranscript({
             <div className="border-border/60 bg-card/30 rounded-lg border px-4 py-5">
               <p className="text-foreground text-[13px] font-medium">Thread persistida pronta</p>
               <p className="text-muted-foreground mt-1 text-[12px]">
-                Este fluxo usa o runtime no processo principal e um provider local determinístico.
+                Este fluxo usa o runtime no processo principal e o provider selecionado da task.
               </p>
             </div>
           )}

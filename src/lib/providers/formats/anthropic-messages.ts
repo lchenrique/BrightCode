@@ -121,8 +121,6 @@ function anthropicAuthHeaders(credential: ProviderCredential | undefined): Recor
   }
   if (credential.method === 'api_key' && credential.apiKey) {
     headers['x-api-key'] = credential.apiKey
-    // Anthropic rejects when both are present; set a placeholder auth
-    headers['Authorization'] = 'placeholder'
   } else if (credential.accessToken) {
     headers['Authorization'] = `Bearer ${credential.accessToken}`
   }
