@@ -68,12 +68,23 @@ function textFromToolOutput(output: unknown): string {
   throw new Error('OpenAI Agents adapter does not support structured tool output.')
 }
 
-function contentFromUserItem(item: Extract<AgentInputItem, { role: 'user' }>): string {
+function contentFromUserItem(item: Extract<AgentInputItem, { role: 'user' }>): string | ContentBlock[] {
   if (typeof item.content === 'string') return item.content
-  return item.content.map((part) => {
-    if (part.type === 'input_text') return part.text
+  const blocks: ContentBlock[] = []
+  for (const part of item.content) {
+    if (part.type === 'input_text') {
+      blocks.push({ type: 'text', text: part.text })
+      continue
+    }
+    if (part.type === 'input_image' && typeof part.image === 'string') {
+      const match = part.image.match(/^data:(image\/[A-Za-z0-9.+-]+);base64,(.+)$/)
+      if (!match) throw new Error('OpenAI Agents adapter requires data-URL images.')
+      blocks.push({ type: 'image', mediaType: match[1], data: match[2] })
+      continue
+    }
     throw new Error(`OpenAI Agents adapter does not support user content type "${part.type}".`)
-  }).join('\n')
+  }
+  return blocks
 }
 
 function contentFromAssistantItem(

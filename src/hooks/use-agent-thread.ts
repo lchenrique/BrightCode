@@ -7,7 +7,10 @@ function runtimeThreadId(taskId: string): string {
   return `runtime_${safeTaskId}`
 }
 
-export function useAgentThread(taskId: string) {
+export function useAgentThread(
+  taskId: string,
+  selection?: { modelId?: string; accountId?: string },
+) {
   const threadId = useMemo(() => runtimeThreadId(taskId), [taskId])
   const [state, setState] = useState<ThreadState | null>(null)
   const [loading, setLoading] = useState(true)
@@ -76,13 +79,19 @@ export function useAgentThread(taskId: string) {
     if (!api) throw new Error('Agent Runtime V2 indisponível.')
     setError(null)
     try {
-      await api.startTurn({ threadId, text, images })
+      await api.startTurn({
+        threadId,
+        text,
+        modelId: selection?.modelId,
+        accountId: selection?.accountId,
+        images,
+      })
     } catch (cause) {
       const message = cause instanceof Error ? cause.message : String(cause)
       setError(message)
       throw cause
     }
-  }, [threadId])
+  }, [selection?.accountId, selection?.modelId, threadId])
 
   const interrupt = useCallback(async () => {
     const api = window.electronAPI?.agentRuntime

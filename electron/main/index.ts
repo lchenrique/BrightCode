@@ -49,8 +49,24 @@ import { registerSkillsIpc } from './skills'
 import { registerTerminalIpc } from './terminal'
 import { registerGitIpc } from './git'
 import { registerBrightMemoryIpc } from './bright-memory'
-import { registerAgentRuntimeIpc } from './agent-runtime/ipc'
+import {
+  configureAgentRuntimeProviderResolver,
+  registerAgentRuntimeIpc,
+} from './agent-runtime/ipc'
+import type { BrightCodeAgentsModelBinding } from './agent-runtime/openai-agents-adapter'
 import { getRendererEntryUrl, isTrustedRendererUrl } from './renderer-security'
+import type { IAgentProvider, ProviderCredential } from '../../src/lib/providers/types'
+import {
+  anthropicModels,
+  antigravityModels,
+  geminiModels,
+  minimaxModels,
+  openaiModels,
+  opencodeGoAnthropicModels,
+  opencodeGoModels,
+  opencodeZenModels,
+} from '../../src/lib/providers/models'
+import { createMainProvider } from './agent-runtime/main-provider-factory'
 
 // electron-store is CJS in v8; this interop makes the default import work.
 const StoreCtor = (Store as unknown as { default?: typeof Store }).default ?? Store
@@ -530,6 +546,54 @@ function migrateCredentialsToAccounts(): void {
   }
 }
 
+const runtimeProviders: IAgentProvider[] = [
+  createMainProvider({ id: 'openai', name: 'OpenAI', baseURL: 'https://api.openai.com/v1', apiFormat: 'openai-chat', staticModels: openaiModels }),
+  createMainProvider({ id: 'anthropic', name: 'Anthropic', baseURL: 'https://api.anthropic.com', apiFormat: 'anthropic-messages', staticModels: anthropicModels }),
+  createMainProvider({ id: 'gemini-cli', name: 'Gemini CLI', baseURL: 'https://generativelanguage.googleapis.com', apiFormat: 'gemini-native', staticModels: geminiModels }),
+  createMainProvider({ id: 'antigravity', name: 'Antigravity', baseURL: 'https://cloudcode-pa.googleapis.com', apiFormat: 'gemini-native', staticModels: antigravityModels }),
+  createMainProvider({ id: 'opencode-zen', name: 'OpenCode Zen', baseURL: 'https://opencode.ai/zen/v1', apiFormat: 'openai-chat', staticModels: opencodeZenModels, unauthenticatedHeaders: { Authorization: 'Bearer public' } }),
+  createMainProvider({ id: 'opencode-go', name: 'OpenCode Go', baseURL: 'https://opencode.ai/zen/go/v1', apiFormat: 'openai-chat', staticModels: opencodeGoModels, modelPrefix: 'opencode-go/' }),
+  createMainProvider({ id: 'opencode-go-anthropic', name: 'OpenCode Go', baseURL: 'https://opencode.ai/zen/go', apiFormat: 'anthropic-messages', staticModels: opencodeGoAnthropicModels, credentialProviderId: 'opencode-go', modelPrefix: 'opencode-go/' }),
+  createMainProvider({ id: 'minimax', name: 'MiniMax', baseURL: 'https://api.minimax.io/v1', apiFormat: 'openai-chat', staticModels: minimaxModels }),
+]
+
+function resolveRuntimeBinding(modelSelection?: string, accountId?: string): BrightCodeAgentsModelBinding | undefined {
+  migrateCredentialsToAccounts()
+  const requested = modelSelection ?? 'minimax/MiniMax-M3'
+  const slash = requested.indexOf('/')
+  const requestedProviderId = slash > 0 ? requested.slice(0, slash) : undefined
+  const requestedModelId = slash > 0 ? requested.slice(slash + 1) : requested
+  const provider = requestedProviderId
+    ? runtimeProviders.find((candidate) => candidate.id === requestedProviderId)
+    : runtimeProviders.find((candidate) => candidate.listModels().some((model) => model.id === requestedModelId))
+  if (!provider) return undefined
+  const model = provider.listModels().find((candidate) => candidate.id === requestedModelId)
+  if (!model) return undefined
+  const credentialProviderId = provider.credentialProviderId ?? provider.id
+  const accounts = auth.get('accounts')[credentialProviderId] ?? {}
+  const account = accountId
+    ? accounts[accountId]
+    : (() => {
+        const activeId = auth.get('activeAccounts')[credentialProviderId]
+        return (activeId ? accounts[activeId] : undefined) ?? accounts['default'] ?? Object.values(accounts)[0]
+      })()
+  const requiresAuth = model.requiresAuth !== false
+  if (requiresAuth && (!account || !account.enabled)) return undefined
+  const storedCredential = account ? accountToStoredCredential(account) : undefined
+  const credential: ProviderCredential | undefined = storedCredential
+    ? {
+        method: storedCredential.method,
+        apiKey: storedCredential.apiKey,
+        accessToken: storedCredential.accessToken,
+        refreshToken: storedCredential.refreshToken,
+        expiresAt: storedCredential.expiresAt,
+        cliSource: storedCredential.cliSource as ProviderCredential['cliSource'],
+        cliEmail: storedCredential.cliEmail,
+      }
+    : undefined
+  return { provider, modelId: model.id, credential }
+}
+
 function broadcastAccountsChanged(): void {
   for (const w of BrowserWindow.getAllWindows()) {
     w.webContents.send(IPC.ACCOUNTS_CHANGED)
@@ -739,6 +803,7 @@ registerSkillsIpc()
 registerTerminalIpc()
 registerGitIpc()
 registerBrightMemoryIpc()
+configureAgentRuntimeProviderResolver({ resolve: resolveRuntimeBinding })
 registerAgentRuntimeIpc()
 
 // ── App lifecycle ──────────────────────────────────────────────────────

@@ -15,7 +15,9 @@ import {
 import { IPC } from '../../shared/ipc-channels'
 import { assertTrustedIpcSender } from '../renderer-security'
 import { FAKE_RUNTIME_MODEL_ID, fakeRuntimeProvider } from './fake-runtime-provider'
+import { createAgentsRuntimeProvider } from './agents-runtime-provider'
 import { getRuntime } from './runtime'
+import type { BrightCodeAgentsModelBinding } from './openai-agents-adapter'
 
 const ajv = new Ajv({ allErrors: true })
 const validators = {
@@ -74,6 +76,16 @@ function registerSenderCleanup(sender: WebContents): void {
   })
 }
 
+export interface AgentRuntimeProviderResolver {
+  resolve(modelId?: string, accountId?: string): BrightCodeAgentsModelBinding | undefined
+}
+
+let providerResolver: AgentRuntimeProviderResolver | null = null
+
+export function configureAgentRuntimeProviderResolver(resolver: AgentRuntimeProviderResolver): void {
+  providerResolver = resolver
+}
+
 export function registerAgentRuntimeIpc(): void {
   const runtime = getRuntime()
 
@@ -108,10 +120,14 @@ export function registerAgentRuntimeIpc(): void {
           ...command.images.map((image) => ({ type: 'image' as const, ...image })),
         ]
       : command.text
+    const binding = providerResolver?.resolve(command.modelId, command.accountId)
+    const provider = binding ? createAgentsRuntimeProvider(binding) : fakeRuntimeProvider
+    const modelId = binding?.modelId ?? FAKE_RUNTIME_MODEL_ID
     const turnId = await runtime.startTurn({
       threadId: command.threadId,
-      provider: fakeRuntimeProvider,
-      modelId: FAKE_RUNTIME_MODEL_ID,
+      provider,
+      modelId,
+      credential: binding?.credential,
       userMessage: { role: 'user', content },
       startSequence: 0,
     })

@@ -4,6 +4,7 @@ import type { ThreadItem } from '../../../electron/shared/agent-protocol'
 import { MarkdownRenderer } from '@/components/chat/MarkdownRenderer'
 import { Loader } from '@/components/ui/loader'
 import { useAgentThread } from '@/hooks/use-agent-thread'
+import { useTask } from '@/hooks/use-tasks'
 import { cn } from '@/lib/utils'
 
 interface InitialMessage {
@@ -18,7 +19,11 @@ export function AgentRuntimeTranscript({
   taskId: string
   initialMessage: InitialMessage | null
 }) {
-  const { state, loading, error, send, interrupt, active } = useAgentThread(taskId)
+  const task = useTask(taskId)
+  const { state, loading, error, send, interrupt, active } = useAgentThread(taskId, {
+    modelId: task?.selectedModel,
+    accountId: task?.selectedAccountId,
+  })
   const [text, setText] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const sentInitialRef = useRef(false)

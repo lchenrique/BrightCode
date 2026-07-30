@@ -21,6 +21,8 @@ export interface AgentRuntimeImageInput {
 export interface AgentRuntimeTurnStartCommand {
   threadId: string
   text: string
+  modelId?: string
+  accountId?: string
   images?: AgentRuntimeImageInput[]
 }
 
@@ -100,6 +102,8 @@ export const AGENT_RUNTIME_IPC_SCHEMAS = {
     properties: {
       threadId,
       text: { type: 'string', minLength: 1, maxLength: 200_000 },
+      modelId: { type: 'string', minLength: 1, maxLength: 200 },
+      accountId: { type: 'string', minLength: 1, maxLength: 128 },
       images: {
         type: 'array',
         maxItems: AGENT_RUNTIME_MAX_IMAGES,
