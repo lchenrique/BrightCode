@@ -38,3 +38,8 @@ node-sidecar/bin/*
 # Local agent runtime / tooling scratch dirs
 .mavis-runtime/
 .cynos/
+
+# tauri:dev session artifacts
+tauri-dev.out.log
+tauri-dev.err.log
+start-tauri-dev.ps1
