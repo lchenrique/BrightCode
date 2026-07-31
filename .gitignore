@@ -27,3 +27,10 @@ release
 *.njsproj
 *.sln
 *.sw?
+
+# Tauri build outputs
+src-tauri/target/
+
+# Node sidecar build outputs (keep .gitkeep so the dir exists)
+node-sidecar/bin/*
+!node-sidecar/bin/.gitkeep

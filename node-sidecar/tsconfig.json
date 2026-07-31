@@ -1,0 +1,14 @@
+{
+  "extends": "../tsconfig.electron.json",
+  "compilerOptions": {
+    "tsBuildInfoFile": "../node_modules/.tmp/tsconfig.node-sidecar.tsbuildinfo",
+    "outDir": "bin",
+    "rootDir": ".",
+    "noEmit": false,
+    "declaration": false,
+    "sourceMap": true,
+    "types": ["node"],
+    "allowImportingTsExtensions": false
+  },
+  "include": ["server.ts", "ipc.ts"]
+}

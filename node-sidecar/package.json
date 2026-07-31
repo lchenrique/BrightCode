@@ -1,0 +1,7 @@
+{
+  "name": "brightcode-sidecar",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "BrightCode Node sidecar — hosts the Agent Runtime V2 and exposes it over HTTP for the Tauri Rust shell."
+}
