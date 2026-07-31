@@ -304,6 +304,36 @@ impl SidecarSupervisor {
         }
     }
 
+    pub async fn event_stream(
+        &self,
+        subscription_id: &str,
+        thread_id: &str,
+    ) -> Result<reqwest::Response, String> {
+        let (url, token) = {
+            let conn = self.inner.conn.read().map_err(|e| e.to_string())?;
+            (
+                format!("{}/v1/agent-runtime/events/stream", conn.base_url),
+                conn.token.clone(),
+            )
+        };
+        let response = self
+            .inner
+            .http
+            .get(url)
+            .bearer_auth(token)
+            .query(&[("subscriptionId", subscription_id), ("threadId", thread_id)])
+            .send()
+            .await
+            .map_err(|e| format!("sidecar event stream failed: {e}"))?;
+        if response.status().is_success() {
+            Ok(response)
+        } else {
+            let status = response.status();
+            let text = response.text().await.unwrap_or_default();
+            Err(format!("sidecar event stream returned {status}: {text}"))
+        }
+    }
+
     async fn handle_failure(&self, e: &reqwest::Error) -> RespawnDecision {
         let mut tracker = self.inner.tracker.lock().await;
         let mut retries = self.inner.retries.lock().await;

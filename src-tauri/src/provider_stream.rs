@@ -35,6 +35,10 @@ const ALLOWED_HOSTS: &[&str] = &[
     "api.groq.com",
     "openrouter.ai",
     "api.deepseek.com",
+    "api.minimax.io",
+    "opencode.ai",
+    "cloudcode-pa.googleapis.com",
+    "chatgpt.com",
 ];
 
 #[derive(Debug, Deserialize)]
@@ -279,5 +283,17 @@ mod tests {
         assert!(is_allowed_url("https://user:pass@api.openai.com/v1").is_ok());
         // Unknown host with a port is still rejected.
         assert!(is_allowed_url("https://evil.example.com:443/").is_err());
+    }
+
+    #[test]
+    fn allows_every_registered_provider_host() {
+        for url in [
+            "https://api.minimax.io/v1/chat/completions",
+            "https://opencode.ai/zen/v1/chat/completions",
+            "https://cloudcode-pa.googleapis.com/v1internal/models",
+            "https://chatgpt.com/backend-api/codex/responses",
+        ] {
+            assert!(is_allowed_url(url).is_ok(), "registered provider URL rejected: {url}");
+        }
     }
 }

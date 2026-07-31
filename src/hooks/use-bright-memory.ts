@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import type { BrightMemoryStatus } from '../../electron/preload'
+import type { BrightMemoryStatus } from '@/lib/electron-api-types'
 
 const EMPTY_STATUS: BrightMemoryStatus = {
   cliInstalled: false,

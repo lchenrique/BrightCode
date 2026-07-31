@@ -30,7 +30,7 @@ pub struct Project {
 }
 
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
-struct StoredProjectsState {
+pub(crate) struct StoredProjectsState {
     projects: Vec<Project>,
     active_project_id: Option<String>,
 }
@@ -89,8 +89,25 @@ impl ProjectsStore {
             .map_err(|e| format!("failed to write {:?}: {e}", self.file_path))
     }
 
-    async fn snapshot(&self) -> StoredProjectsState {
+    pub async fn snapshot(&self) -> StoredProjectsState {
         self.inner.lock().await.clone()
+    }
+
+    /// Lookup helper for sibling modules (e.g. `git`) that need to
+    /// resolve an id → Project without touching the private state
+    /// struct. Returns None when no project with that id is registered.
+    pub(crate) async fn find_by_id(&self, id: &str) -> Option<Project> {
+        self.snapshot()
+            .await
+            .projects
+            .into_iter()
+            .find(|p| p.id == id)
+    }
+
+    /// Returns the currently active project, or None when no project
+    /// has been added / picked yet. Mirrors `StoredProjectsState::active_project`.
+    pub(crate) async fn active_project(&self) -> Option<Project> {
+        self.snapshot().await.active_project()
     }
 
     async fn commit(
@@ -171,7 +188,10 @@ pub async fn projects_add(
         created_at: now_ms(),
     };
     snapshot.projects.push(project.clone());
-    if snapshot.projects.len() == 1 {
+    // Auto-pick when nothing is active so the freshly added project
+    // opens in the UI without an extra click. If the user already had
+    // something active we leave it alone (existing workflow preserved).
+    if snapshot.active_project_id.is_none() {
         snapshot.active_project_id = Some(project.id.clone());
     }
     state.commit(snapshot, &app).await?;

@@ -19,30 +19,10 @@
  */
 
 import { randomUUID } from 'node:crypto'
+import { emptyThreadState, type ThreadState } from '../shared/agent-protocol.js'
 
 export interface ThreadCreateInput {
   threadId?: string
-}
-
-export interface ThreadState {
-  threadId: string
-  generation: number
-  sequence: number
-  turns: Record<string, unknown>
-  turnOrder: string[]
-  items: Record<string, unknown>
-  itemOrder: string[]
-  approvals: Record<string, unknown>
-  usage: Usage
-  idle: boolean
-}
-
-export interface Usage {
-  inputTokens: number
-  outputTokens: number
-  cachedTokens: number
-  costUSD: number
-  perTurn: Record<string, unknown>
 }
 
 export interface ThreadCreateResponse {
@@ -50,29 +30,8 @@ export interface ThreadCreateResponse {
   thread: ThreadState
 }
 
-export function emptyThreadState(threadId: string): ThreadState {
-  return {
-    threadId,
-    generation: 0,
-    sequence: 0,
-    turns: {},
-    turnOrder: [],
-    items: {},
-    itemOrder: [],
-    approvals: {},
-    usage: {
-      inputTokens: 0,
-      outputTokens: 0,
-      cachedTokens: 0,
-      costUSD: 0,
-      perTurn: {},
-    },
-    idle: true,
-  }
-}
-
 /** In-memory store. Phase 4 swaps this for an event-store + persistence. */
-const threads = new Map<string, ThreadState>()
+export const threads = new Map<string, ThreadState>()
 
 export function threadCreate(
   input: ThreadCreateInput,

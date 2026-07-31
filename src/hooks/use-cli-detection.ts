@@ -11,7 +11,7 @@
  */
 
 import { useCallback, useEffect, useState } from 'react'
-import type { CLIDetection, DetectedProviderId } from '../../electron/preload'
+import type { CLIDetection, DetectedProviderId } from '@/lib/electron-api-types'
 
 /** Detected status for a single provider. */
 export interface CLIDetectionState {
@@ -41,7 +41,7 @@ export function useCLIDetection(
       setState({
         detection: null,
         loading: false,
-        error: 'CLI detection requires the Electron wrapper.',
+        error: 'CLI detection requires the desktop app.',
       })
       return
     }
@@ -81,7 +81,7 @@ export function useAllCLIDetection(refreshKey: unknown = 0): {
 
   const run = useCallback(() => {
     if (typeof window === 'undefined' || !window.electronAPI) {
-      setError('CLI detection requires the Electron wrapper.')
+      setError('CLI detection requires the desktop app.')
       setLoading(false)
       return
     }

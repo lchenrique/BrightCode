@@ -95,17 +95,25 @@ function useAgents(): Agent[] {
         avatarSeed: a.avatarSeed,
         color: pickColor(a.id),
       }))
-    const prev = cacheRef.current
-    if (
-      prev.length === next.length &&
-      prev.every((p, i) => p.id === next[i].id)
-    ) {
-      return prev
-    }
-    cacheRef.current = next
     return next
   }, [])
-  return useSyncExternalStore(subscribe, getSnapshot, getSnapshot)
+  const getServerSnapshot = useCallback(() => cacheRef.current, [])
+  return useSyncExternalStore(
+    subscribe,
+    () => {
+      const next = getSnapshot()
+      const prev = cacheRef.current
+      if (
+        prev.length === next.length &&
+        prev.every((p, i) => p.id === next[i].id)
+      ) {
+        return prev
+      }
+      cacheRef.current = next
+      return next
+    },
+    getServerSnapshot,
+  )
 }
 
 export function AppSidebar({

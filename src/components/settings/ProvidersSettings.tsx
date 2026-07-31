@@ -40,7 +40,7 @@ import {
 } from '@/hooks/use-provider-registry'
 import { useAllCLIDetection } from '@/hooks/use-cli-detection'
 import { useProviderAccounts } from '@/hooks/use-provider-accounts'
-import type { CLIDetection, DetectedProviderId } from '../../../electron/preload'
+import type { CLIDetection, DetectedProviderId } from '@/lib/electron-api-types'
 import { OAUTH_CONFIGS } from '@/lib/providers/auth/oauth-configs'
 import { cn } from '@/lib/utils'
 import {
@@ -663,6 +663,9 @@ const CLI_PROVIDER_TARGET: Record<DetectedProviderId, { providerId: string; read
   anthropic: { providerId: 'anthropic', ready: true },
   'gemini-cli': { providerId: 'gemini-cli', ready: true },
   antigravity: { providerId: 'antigravity', ready: true },
+  'opencode-go': { providerId: 'opencode-go', ready: true },
+  'opencode-zen': { providerId: 'opencode-zen', ready: true },
+  minimax: { providerId: 'minimax', ready: true },
 }
 
 const CLI_DISPLAY: Record<
@@ -684,6 +687,18 @@ const CLI_DISPLAY: Record<
   antigravity: {
     label: 'Antigravity CLI',
     hint: 'Detects credential in OS keyring (Windows: gemini:antigravity)',
+  },
+  'opencode-go': {
+    label: 'OpenCode Go',
+    hint: 'Detects ~/.local/share/opencode/auth.json',
+  },
+  'opencode-zen': {
+    label: 'OpenCode Zen',
+    hint: 'Detects ~/.local/share/opencode/auth.json',
+  },
+  minimax: {
+    label: 'MiniMax Coding Plan',
+    hint: 'Detects ~/.local/share/opencode/auth.json',
   },
 }
 
@@ -728,8 +743,15 @@ function DetectedCLISection() {
     refetch()
   }
 
-  // Always show all 4 known CLIs; mark which were detected.
-  const order: DetectedProviderId[] = ['openai', 'anthropic', 'gemini-cli', 'antigravity']
+  const order: DetectedProviderId[] = [
+    'openai',
+    'anthropic',
+    'gemini-cli',
+    'antigravity',
+    'opencode-go',
+    'opencode-zen',
+    'minimax',
+  ]
   const byProvider = new Map(detections.map((d) => [d.providerId, d]))
   const detectedCount = detections.length
 

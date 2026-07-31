@@ -135,7 +135,10 @@ const result = await evaluate(`(async () => {
     'cdp-smoke-project',
   );
 
-  // getActive should now point at the just-added project (first project auto-activates)
+  // Explicitly open the new project; add() preserves the current active project.
+  if (out.addResult && out.addResult.ok) {
+    await window.electronAPI.projects.setActive(out.addResult.project.id);
+  }
   out.activeAfterAdd = await window.electronAPI.projects.getActive();
 
   // Remove it (clean up)

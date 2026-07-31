@@ -77,9 +77,10 @@ class ProjectsStore {
     const api = window.electronAPI?.projects
     if (!api) return { ok: false, error: 'Projects backend not available' }
     const result = await api.add(path, label)
-    if (result.ok) {
-      await this.refresh()
-    }
+    // Refresh on both branches — a rejected add (already-present
+    // path) still leaves the backend authoritative, and the UI may
+    // have diverged from it during a partial-failure window.
+    await this.refresh()
     return result
   }
 

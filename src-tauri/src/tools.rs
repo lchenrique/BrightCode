@@ -345,43 +345,10 @@ fn resolve_in_project(project_root: &str, rel: &str) -> Result<PathBuf, String> 
     if p.is_absolute() {
         return Err("absolute paths are not allowed — pass a path relative to the project root".into());
     }
-    let normalized = path_normalize_rel(rel);
-    if normalized.starts_with("..") {
-        return Err("path escapes the project root".into());
-    }
-    let candidate = Path::new(project_root).join(&normalized);
-    let root = std::fs::canonicalize(project_root).unwrap_or_else(|_| PathBuf::from(project_root));
-    if !path_within(&root, &candidate) {
-        return Err("path escapes the project root".into());
-    }
-    Ok(candidate)
-}
-
-fn path_normalize_rel(rel: &str) -> String {
-    let normalized = rel.replace('\\', "/");
-    let mut stack: Vec<&str> = Vec::new();
-    for seg in normalized.split('/') {
-        match seg {
-            "" | "." => continue,
-            ".." => {
-                stack.pop();
-            }
-            other => stack.push(other),
-        }
-    }
-    stack.join("/")
-}
-
-/// True if `child` resolves inside `root`. Compares components rather
-/// than relying on `Path::starts_with`, which fails on Windows when
-/// one path has the `\\?\` extended prefix and the other does not.
-fn path_within(root: &Path, child: &Path) -> bool {
-    let r: Vec<_> = root.components().collect();
-    let c: Vec<_> = child.components().collect();
-    if c.len() < r.len() {
-        return false;
-    }
-    r.iter().zip(c.iter()).all(|(a, b)| a == b)
+    let normalized = crate::workspace::safe_relative_path(rel)?;
+    let root = std::fs::canonicalize(project_root)
+        .map_err(|e| format!("failed to resolve project root: {e}"))?;
+    crate::workspace::resolve_within_root(&root, &normalized)
 }
 
 async fn read_file(root: &str, rel: &str) -> Value {
@@ -827,14 +794,6 @@ fn truncate(bytes: &[u8], limit: usize) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn path_normalize_rel_collapses_dot_segments() {
-        assert_eq!(path_normalize_rel("./a/./b"), "a/b");
-        assert_eq!(path_normalize_rel("a/../b/c"), "b/c");
-        assert_eq!(path_normalize_rel(""), "");
-        assert_eq!(path_normalize_rel("a//b"), "a/b");
-    }
 
     #[test]
     fn resolve_in_project_rejects_absolute_and_traversal() {

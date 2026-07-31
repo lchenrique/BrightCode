@@ -196,6 +196,26 @@ const electronBackend = (() => {
     pendingHydrate = (async () => {
       cache = await api.listAll()
       activeCache = await api.listActive()
+      if (Object.keys(cache).length === 0) {
+        const local = readLocal()
+        for (const [providerId, accounts] of Object.entries(local)) {
+          for (const account of Object.values(accounts)) {
+            await api.add(providerId, account)
+          }
+        }
+        const localActive = readActiveLocal()
+        for (const [providerId, accountId] of Object.entries(localActive)) {
+          if (local[providerId]?.[accountId]) {
+            await api.setActive(providerId, accountId)
+          }
+        }
+        if (Object.keys(local).length > 0) {
+          cache = await api.listAll()
+          activeCache = await api.listActive()
+          localStorage.removeItem(ACCOUNTS_KEY)
+          localStorage.removeItem('brightcode.active-accounts.v2')
+        }
+      }
       hydrated = true
     })()
     await pendingHydrate

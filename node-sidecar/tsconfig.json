@@ -1,14 +1,22 @@
 {
-  "extends": "../tsconfig.electron.json",
   "compilerOptions": {
     "tsBuildInfoFile": "../node_modules/.tmp/tsconfig.node-sidecar.tsbuildinfo",
+    "target": "es2023",
+    "lib": ["ES2023"],
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "types": ["node"],
+    "skipLibCheck": true,
+    "verbatimModuleSyntax": false,
+    "moduleDetection": "force",
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noFallthroughCasesInSwitch": true,
     "outDir": "bin",
     "rootDir": ".",
     "noEmit": false,
     "declaration": false,
-    "sourceMap": true,
-    "types": ["node"],
-    "allowImportingTsExtensions": false
+    "sourceMap": true
   },
-  "include": ["server.ts", "ipc.ts", "handlers/**/*.ts"]
+  "include": ["server.ts", "ipc.ts", "handlers/**/*.ts", "shared/**/*.ts"]
 }

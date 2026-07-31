@@ -76,6 +76,43 @@ async function spawnSidecar() {
   return { child, ready, stop }
 }
 
+async function post(contract, path, body) {
+  return fetch(`http://127.0.0.1:${contract.port}${path}`, {
+    method: 'POST',
+    headers: {
+      authorization: `Bearer ${contract.auth}`,
+      'content-type': 'application/json',
+    },
+    body: JSON.stringify(body),
+  })
+}
+
+async function* readSse(response) {
+  const reader = response.body.getReader()
+  const decoder = new TextDecoder()
+  let buffer = ''
+  try {
+    while (true) {
+      const { value, done } = await reader.read()
+      if (done) return
+      buffer += decoder.decode(value, { stream: true })
+      let boundary
+      while ((boundary = buffer.indexOf('\n\n')) >= 0) {
+        const block = buffer.slice(0, boundary)
+        buffer = buffer.slice(boundary + 2)
+        const data = block
+          .split('\n')
+          .find((line) => line.startsWith('data:'))
+          ?.slice(5)
+          .trim()
+        if (data) yield JSON.parse(data)
+      }
+    }
+  } finally {
+    await reader.cancel()
+  }
+}
+
 describe('tauri-sidecar round-trip', () => {
   it('POST /v1/agent-runtime/thread/create returns ThreadState', async () => {
     const { ready, stop } = await spawnSidecar()
@@ -105,6 +142,49 @@ describe('tauri-sidecar round-trip', () => {
       expect(json.thread.turns).toEqual({})
       expect(json.thread.items).toEqual({})
     } finally {
+      await stop()
+    }
+  }, 15_000)
+
+  it('persists turn events and streams them through SSE', async () => {
+    const { ready, stop } = await spawnSidecar()
+    let events
+    try {
+      const contract = await ready
+      const threadId = 'runtime-flow'
+      expect((await post(contract, '/v1/agent-runtime/thread/create', { threadId })).status).toBe(200)
+
+      const eventResponse = await fetch(
+        `http://127.0.0.1:${contract.port}/v1/agent-runtime/events/stream?subscriptionId=test-sub&threadId=${threadId}`,
+        { headers: { authorization: `Bearer ${contract.auth}` } },
+      )
+      expect(eventResponse.status).toBe(200)
+      events = readSse(eventResponse)
+
+      const start = await post(contract, '/v1/agent-runtime/turn/start', {
+        threadId,
+        prompt: 'hello',
+      })
+      expect(start.status).toBe(200)
+      const { turnId } = await start.json()
+
+      const started = await events.next()
+      expect(started.value.event.type).toBe('turn-start')
+      expect(started.value.event.turnId).toBe(turnId)
+      expect(started.value.state.itemOrder).toHaveLength(1)
+
+      const history = await post(contract, '/v1/agent-runtime/history/read', {
+        threadId,
+        afterSequence: -1,
+      })
+      expect(history.status).toBe(200)
+      expect((await history.json()).map((event) => event.type)).toContain('turn-start')
+
+      const interrupted = await post(contract, '/v1/agent-runtime/turn/interrupt', { threadId })
+      expect(interrupted.status).toBe(200)
+      expect((await events.next()).value.event.type).toBe('turn-interrupted')
+    } finally {
+      await events?.return()
       await stop()
     }
   }, 15_000)

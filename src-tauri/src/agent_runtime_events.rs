@@ -1,33 +1,15 @@
-//! Agent Runtime event subscription bookkeeping.
-//!
-//! Phase 1 stub: `subscribe` validates the command, returns an empty
-//! history + a fresh state placeholder, and stores the subscription in
-//! a map keyed by `subscriptionId`. `unsubscribe` removes it. Real
-//! event delivery is Phase 2 (via the Node sidecar's SSE endpoint or
-//! a webhook that the sidecar POSTs to a Rust HTTP listener — both
-//! are out of scope here).
-//!
-//! The Tauri command surface is intentionally tiny so the renderer
-//! side of the bridge can wire against it without depending on Phase 2
-//! details.
-
 use std::collections::HashMap;
-use std::sync::Arc;
 
+use futures_util::StreamExt;
 use serde_json::{json, Value};
-use tauri::AppHandle;
-use tokio::sync::Mutex;
+use tauri::{AppHandle, Emitter, State};
+use tokio::sync::{oneshot, Mutex};
+
+use crate::sidecar::SidecarSupervisor;
 
 #[derive(Default)]
 pub struct RuntimeEventsState {
-    subs: Mutex<HashMap<String, Subscription>>,
-}
-
-#[derive(Clone)]
-struct Subscription {
-    subscription_id: String,
-    thread_id: String,
-    created_at_ms: u64,
+    subscriptions: Mutex<HashMap<String, oneshot::Sender<()>>>,
 }
 
 impl RuntimeEventsState {
@@ -38,61 +20,106 @@ impl RuntimeEventsState {
 
 #[tauri::command]
 pub async fn agent_runtime_subscribe(
-    _app: AppHandle,
-    state: tauri::State<'_, RuntimeEventsState>,
+    app: AppHandle,
+    runtime_events: State<'_, RuntimeEventsState>,
+    sidecar: State<'_, SidecarSupervisor>,
     command: Value,
 ) -> Result<Value, String> {
-    let subscription_id = command
-        .get("subscriptionId")
-        .and_then(|v| v.as_str())
-        .ok_or_else(|| "missing subscriptionId".to_string())?
-        .to_string();
-    let thread_id = command
-        .get("threadId")
-        .and_then(|v| v.as_str())
-        .ok_or_else(|| "missing threadId".to_string())?
-        .to_string();
+    let subscription_id = required_string(&command, "subscriptionId")?;
+    let thread_id = required_string(&command, "threadId")?;
+    let after_sequence = command
+        .get("afterSequence")
+        .and_then(Value::as_i64)
+        .unwrap_or(-1);
 
-    let sub = Subscription {
-        subscription_id: subscription_id.clone(),
-        thread_id,
-        created_at_ms: now_ms(),
-    };
-    let mut g = state.subs.lock().await;
-    g.insert(subscription_id.clone(), sub);
+    let response = sidecar
+        .event_stream(&subscription_id, &thread_id)
+        .await?;
+    let state = sidecar
+        .post(
+            "/v1/agent-runtime/thread/read",
+            json!({ "threadId": thread_id }),
+        )
+        .await?;
+    let history = sidecar
+        .post(
+            "/v1/agent-runtime/history/read",
+            json!({ "threadId": thread_id, "afterSequence": after_sequence }),
+        )
+        .await?;
 
-    Ok(json!({
-        "state": { "threadId": command.get("threadId"), "phase": "idle" },
-        "history": [],
-    }))
+    let (cancel, mut cancelled) = oneshot::channel();
+    if let Some(previous) = runtime_events
+        .subscriptions
+        .lock()
+        .await
+        .insert(subscription_id.clone(), cancel)
+    {
+        let _ = previous.send(());
+    }
+
+    let channel = format!("agent-runtime:event:{subscription_id}");
+    tauri::async_runtime::spawn(async move {
+        let mut bytes = response.bytes_stream();
+        let mut buffer = String::new();
+        loop {
+            tokio::select! {
+                _ = &mut cancelled => break,
+                next = bytes.next() => match next {
+                    Some(Ok(chunk)) => {
+                        buffer.push_str(&String::from_utf8_lossy(&chunk));
+                        for envelope in drain_sse(&mut buffer) {
+                            let _ = app.emit(&channel, envelope);
+                        }
+                    }
+                    Some(Err(error)) => {
+                        eprintln!("[agent-runtime] event stream failed: {error}");
+                        break;
+                    }
+                    None => break,
+                }
+            }
+        }
+    });
+
+    Ok(json!({ "state": state, "history": history }))
 }
 
 #[tauri::command]
 pub async fn agent_runtime_unsubscribe(
-    state: tauri::State<'_, RuntimeEventsState>,
+    runtime_events: State<'_, RuntimeEventsState>,
     subscription_id: String,
 ) -> Result<(), String> {
-    let mut g = state.subs.lock().await;
-    g.remove(&subscription_id);
+    if let Some(cancel) = runtime_events.subscriptions.lock().await.remove(&subscription_id) {
+        let _ = cancel.send(());
+    }
     Ok(())
 }
 
-fn now_ms() -> u64 {
-    use std::time::{SystemTime, UNIX_EPOCH};
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_millis() as u64)
-        .unwrap_or(0)
+fn required_string(command: &Value, key: &str) -> Result<String, String> {
+    command
+        .get(key)
+        .and_then(Value::as_str)
+        .filter(|value| !value.is_empty())
+        .map(str::to_owned)
+        .ok_or_else(|| format!("missing {key}"))
 }
 
-// Helper for tests.
-#[allow(dead_code)]
-pub(crate) fn active_subscription_count(state_arc: &Arc<RuntimeEventsState>) -> usize {
-    if let Ok(g) = state_arc.subs.try_lock() {
-        g.len()
-    } else {
-        0
+fn drain_sse(buffer: &mut String) -> Vec<Value> {
+    let mut values = Vec::new();
+    while let Some(boundary) = buffer.find("\n\n") {
+        let frame = buffer[..boundary].to_string();
+        buffer.drain(..boundary + 2);
+        for line in frame.lines() {
+            let Some(data) = line.strip_prefix("data:") else {
+                continue;
+            };
+            if let Ok(value) = serde_json::from_str(data.trim()) {
+                values.push(value);
+            }
+        }
     }
+    values
 }
 
 #[cfg(test)]
@@ -101,25 +128,25 @@ mod tests {
 
     #[test]
     fn new_state_is_empty() {
-        let s = RuntimeEventsState::new();
-        let g = s.subs.try_lock().unwrap();
-        assert!(g.is_empty());
+        let state = RuntimeEventsState::new();
+        assert!(state.subscriptions.try_lock().unwrap().is_empty());
     }
 
     #[test]
     fn subscribe_command_requires_subscription_id() {
-        let bad = serde_json::json!({ "threadId": "t-1" });
-        assert!(bad.get("subscriptionId").is_none());
-        let good = serde_json::json!({ "subscriptionId": "s-1", "threadId": "t-1" });
-        assert_eq!(good.get("subscriptionId").unwrap().as_str(), Some("s-1"));
+        let bad = json!({ "threadId": "t-1" });
+        assert!(required_string(&bad, "subscriptionId").is_err());
+        let good = json!({ "subscriptionId": "s-1", "threadId": "t-1" });
+        assert_eq!(required_string(&good, "subscriptionId").unwrap(), "s-1");
     }
 
     #[test]
-    fn now_ms_is_monotonic_and_positive() {
-        let a = now_ms();
-        std::thread::sleep(std::time::Duration::from_millis(2));
-        let b = now_ms();
-        assert!(a > 0);
-        assert!(b >= a);
+    fn drain_sse_preserves_partial_frames() {
+        let mut buffer = ": connected\n\ndata: {\"event\":{\"type\":\"turn-start\"}}\n".into();
+        assert!(drain_sse(&mut buffer).is_empty());
+        buffer.push('\n');
+        let values = drain_sse(&mut buffer);
+        assert_eq!(values[0]["event"]["type"], "turn-start");
+        assert!(buffer.is_empty());
     }
 }

@@ -1,4 +1,12 @@
 {
   "projectId": "prj_13pm96ek4ky4azp7t5p54v5jk1",
-  "version": 1
+  "version": 1,
+  "memories": [
+    {
+      "id": "workspace_rs_phase3",
+      "summary": "workspace.rs (src-tauri/src/workspace.rs) implements 4 Tauri commands for Phase 3 F1+F2: workspace_list_tree (nested WorkspaceEntry tree, depth-bounded, skips dot/node_modules/target/dist, HARD_MAX_DEPTH=16, MAX_TREE_ENTRIES=5000 count-before-push), workspace_read_file (take(MAX_FILE_BYTES+1) for TOCTOU growth detection, NUL-byte binary probe in first 8KB), workspace_write_file (2MB cap, parent must exist), workspace_open_project (explorer.exe direct argv on Windows — no cmd.exe shell, open on macOS, xdg-open on Linux). Security: find_existing_prefix walks to longest existing ancestor + canonicalize + starts_with(root) — blocks symlink parent escape. Wire in lib.rs via `mod workspace;` + 4 invoke_handler entries (workspace::workspace_list_tree, workspace::workspace_read_file, workspace::workspace_write_file, workspace::workspace_open_project). Depends on ProjectsStore::find_by_id (pub(crate)). 4 unit tests in #[cfg(test)] mod tests: path_within_root_accepts_child_rejects_escape, is_hidden_or_ignored_matches_spec, detect_binary_finds_nul_and_accepts_text, safe_relative_path_rejects_absolute_and_dotdot. Two-pass reviewer audit applied (symlink parent + Windows shell + TOCTOU + entry cap all fixed). WDAC blocker: cargo test executable cannot run in target/ (os error 4551); workaround CARGO_TARGET_DIR=/c/temp_ws_target.",
+      "tags": ["tauri", "phase3", "f1-f2", "workspace", "rust"],
+      "savedAt": "2026-01-01T00:00:00Z"
+    }
+  ]
 }

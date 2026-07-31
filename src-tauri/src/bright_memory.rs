@@ -18,6 +18,7 @@ use serde::Serialize;
 use tokio::process::Command;
 
 #[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct BrightMemoryStatus {
     pub cli_installed: bool,
     pub cli_version: Option<String>,

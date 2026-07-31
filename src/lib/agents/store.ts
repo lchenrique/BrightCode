@@ -156,7 +156,14 @@ const electronBackend = (() => {
     if (hydrated) return
     if (pendingHydrate) return pendingHydrate
     pendingHydrate = (async () => {
-      const list = await api.list()
+      let list = await api.list()
+      if (list.length === 0) {
+        const local = Object.values(readLocal())
+        if (local.length > 0) {
+          list = await Promise.all(local.map((agent) => api.add(agent)))
+          localStorage.removeItem(STORAGE_KEY)
+        }
+      }
       cache = {}
       for (const agent of list) {
         cache[agent.id] = migrate(agent as unknown as Record<string, unknown>)

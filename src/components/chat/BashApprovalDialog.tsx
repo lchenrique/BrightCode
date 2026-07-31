@@ -59,8 +59,7 @@ export function BashApprovalDialog() {
       setPending(null) // optimistic clear — now `pending` is null for any racing call
       window.electronAPI.tools.respondToBashApproval(current.approvalId, approved)
     },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [], // intentionally depend on nothing — always reads the *current* `pending` from closure
+    [pending],
   )
 
   // Esc → deny. Enter → approve (only when the dialog is open).
