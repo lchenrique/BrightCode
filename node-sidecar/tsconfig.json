@@ -10,5 +10,5 @@
     "types": ["node"],
     "allowImportingTsExtensions": false
   },
-  "include": ["server.ts", "ipc.ts"]
+  "include": ["server.ts", "ipc.ts", "handlers/**/*.ts"]
 }

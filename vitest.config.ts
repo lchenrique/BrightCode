@@ -14,7 +14,7 @@ export default defineConfig({
     tsconfigPaths: true,
   },
   test: {
-    include: ['test/**/*.test.ts'],
+    include: ['test/**/*.test.ts', 'test/**/*.test.mjs'],
     exclude: ['test/**/node_modules/**'],
     // Deterministic environment — no browser, no Electron.
     environment: 'node',
