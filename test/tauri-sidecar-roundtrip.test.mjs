@@ -126,4 +126,28 @@ describe('tauri-sidecar round-trip', () => {
       await stop()
     }
   }, 15_000)
+
+  it('rejects schema-invalid body with 400', async () => {
+    const { ready, stop } = await spawnSidecar()
+    try {
+      const contract = await ready
+      // `threadId: ""` violates minLength: 1 in node-sidecar/ipc.ts
+      // schema. Fastify's validator should return 400 before the
+      // handler runs.
+      const res = await fetch(
+        `http://127.0.0.1:${contract.port}/v1/agent-runtime/thread/create`,
+        {
+          method: 'POST',
+          headers: {
+            authorization: `Bearer ${contract.auth}`,
+            'content-type': 'application/json',
+          },
+          body: JSON.stringify({ threadId: '' }),
+        },
+      )
+      expect(res.status).toBe(400)
+    } finally {
+      await stop()
+    }
+  }, 15_000)
 })
