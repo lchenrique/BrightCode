@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>BrightCode</title>
+    <style>
+      :root { color-scheme: dark; }
+      html, body { height: 100%; margin: 0; }
+      body {
+        background: #0b0b0d;
+        color: #d4d4d8;
+        font-family: 'Segoe UI', 'Inter', system-ui, sans-serif;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        text-align: center;
+      }
+      #boot-fallback {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 16px;
+        padding: 24px;
+        max-width: 520px;
+      }
+      #boot-fallback .label { font-size: 12px; letter-spacing: 0.12em; text-transform: uppercase; color: #71717a; }
+      #boot-fallback .title { font-size: 22px; font-weight: 600; color: #fafafa; }
+      #boot-fallback .spinner {
+        width: 28px; height: 28px; border-radius: 50%;
+        border: 2px solid #27272a; border-top-color: #f4f4f5;
+        animation: spin 0.9s linear infinite;
+      }
+      @keyframes spin { to { transform: rotate(360deg); } }
+      #boot-fallback .err { color: #fca5a5; white-space: pre-wrap; text-align: left; max-height: 240px; overflow: auto; padding: 12px; background: #18181b; border: 1px solid #3f3f46; border-radius: 6px; font-family: ui-monospace, Menlo, monospace; font-size: 12px; }
+      #root:empty + #boot-fallback,
+      #root:not(:empty) ~ #boot-fallback { display: none; }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <div id="boot-fallback" role="status" aria-live="polite">
+      <div class="spinner" aria-hidden="true"></div>
+      <div>
+        <div class="label">BrightCode</div>
+        <div class="title" id="boot-title">Loading…</div>
+      </div>
+      <pre id="boot-err" class="err" hidden></pre>
+    </div>
+    <script>
+      (function () {
+        const titleEl = document.getElementById('boot-title');
+        const errEl = document.getElementById('boot-err');
+        const start = Date.now();
+        setTimeout(() => { if (titleEl) titleEl.textContent = 'Still loading…'; }, 4000);
+        setTimeout(() => {
+          const root = document.getElementById('root');
+          if (root && !root.children.length) {
+            const elapsed = ((Date.now() - start) / 1000).toFixed(1);
+            titleEl.textContent = 'Renderer is taking longer than expected (' + elapsed + 's)';
+          }
+        }, 12000);
+        window.addEventListener('error', (e) => {
+          if (errEl) {
+            errEl.hidden = false;
+            errEl.textContent = (e.error && e.error.stack) ? e.error.stack : (e.message || String(e));
+          }
+        });
+        window.addEventListener('unhandledrejection', (e) => {
+          if (errEl) {
+            errEl.hidden = false;
+            errEl.textContent = (e.reason && e.reason.stack) ? e.reason.stack : JSON.stringify(e.reason);
+          }
+        });
+      })();
+    </script>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

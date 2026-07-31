@@ -4,16 +4,104 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/png" href="/favicon.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link
-      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
-      rel="stylesheet"
-    />
     <title>BrightCode</title>
+    <style>
+      :root { color-scheme: dark; }
+      html, body { height: 100%; margin: 0; }
+      body {
+        background: #0b0b0d;
+        color: #d4d4d8;
+        font-family: 'Inter', 'Segoe UI', system-ui, sans-serif;
+      }
+      #boot-fallback {
+        position: fixed;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        text-align: center;
+        background: #0b0b0d;
+        z-index: 1;
+      }
+      #boot-fallback[hidden] { display: none; }
+      #boot-fallback .box {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 16px;
+        padding: 24px;
+        max-width: 520px;
+      }
+      #boot-fallback .label { font-size: 12px; letter-spacing: 0.12em; text-transform: uppercase; color: #71717a; }
+      #boot-fallback .title { font-size: 22px; font-weight: 600; color: #fafafa; }
+      #boot-fallback .spinner {
+        width: 28px; height: 28px; border-radius: 50%;
+        border: 2px solid #27272a; border-top-color: #f4f4f5;
+        animation: spin 0.9s linear infinite;
+      }
+      @keyframes spin { to { transform: rotate(360deg); } }
+      #boot-fallback .err { color: #fca5a5; white-space: pre-wrap; text-align: left; max-height: 240px; overflow: auto; padding: 12px; background: #18181b; border: 1px solid #3f3f46; border-radius: 6px; font-family: ui-monospace, Menlo, monospace; font-size: 12px; }
+    </style>
   </head>
   <body>
     <div id="root"></div>
+    <div id="boot-fallback" role="status" aria-live="polite">
+      <div class="box">
+        <div class="spinner" aria-hidden="true"></div>
+        <div>
+          <div class="label">BrightCode</div>
+          <div class="title" id="boot-title">Carregando…</div>
+        </div>
+        <pre id="boot-err" class="err" hidden></pre>
+      </div>
+    </div>
+    <script>
+      (function () {
+        var fallback = document.getElementById('boot-fallback');
+        var titleEl = document.getElementById('boot-title');
+        var errEl = document.getElementById('boot-err');
+        var start = Date.now();
+        var slowTitleShown = false;
+        function hide() {
+          if (fallback) fallback.setAttribute('hidden', '');
+        }
+        function showTitle(t) {
+          if (titleEl) titleEl.textContent = t;
+          slowTitleShown = true;
+        }
+        setTimeout(function () { if (!slowTitleShown) showTitle('Ainda carregando…'); }, 4000);
+        setTimeout(function () {
+          var root = document.getElementById('root');
+          if (root && root.children.length) return; // already mounted
+          var elapsed = ((Date.now() - start) / 1000).toFixed(1);
+          showTitle('Renderer demorando mais que o esperado (' + elapsed + 's)');
+        }, 12000);
+        var observer = new MutationObserver(function () {
+          var root = document.getElementById('root');
+          if (root && root.children.length) hide();
+        });
+        var root = document.getElementById('root');
+        if (root) observer.observe(root, { childList: true, subtree: false });
+        // Hard cap: if still showing after 60s, leave visible but flag
+        setTimeout(function () {
+          if (fallback && !fallback.hasAttribute('hidden')) {
+            showTitle('Renderer ainda em carga após 60s — verifique os logs do dev');
+          }
+        }, 60000);
+        window.addEventListener('error', function (e) {
+          if (errEl) {
+            errEl.hidden = false;
+            errEl.textContent = (e.error && e.error.stack) ? e.error.stack : (e.message || String(e));
+          }
+        });
+        window.addEventListener('unhandledrejection', function (e) {
+          if (errEl) {
+            errEl.hidden = false;
+            errEl.textContent = (e.reason && e.reason.stack) ? e.reason.stack : JSON.stringify(e.reason);
+          }
+        });
+      })();
+    </script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

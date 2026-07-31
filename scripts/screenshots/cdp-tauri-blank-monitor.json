@@ -1,0 +1,168 @@
+{
+  "observedAt": "2026-07-31T22:27:51.839Z",
+  "snapshot": {
+    "documentReadyState": "complete",
+    "documentTitle": "",
+    "bodyTextLength": 0,
+    "outerHTMLLength": 39,
+    "electronAPIPresent": false,
+    "electronAPIKeys": 0,
+    "reactRootChildren": 0,
+    "rootInnerHTML": null,
+    "registryExposed": false,
+    "renderer": null
+  },
+  "samples": [
+    {
+      "ts": 1785536853151,
+      "bodyTextLength": 0,
+      "rootChildren": 0,
+      "firstChildTag": null,
+      "firstChildClass": null,
+      "visibleText": ""
+    },
+    {
+      "ts": 1785536854177,
+      "bodyTextLength": 0,
+      "rootChildren": 0,
+      "firstChildTag": null,
+      "firstChildClass": null,
+      "visibleText": ""
+    },
+    {
+      "ts": 1785536855222,
+      "bodyTextLength": 0,
+      "rootChildren": 0,
+      "firstChildTag": null,
+      "firstChildClass": null,
+      "visibleText": ""
+    },
+    {
+      "ts": 1785536856267,
+      "bodyTextLength": 0,
+      "rootChildren": 0,
+      "firstChildTag": null,
+      "firstChildClass": null,
+      "visibleText": ""
+    },
+    {
+      "ts": 1785536857307,
+      "bodyTextLength": 0,
+      "rootChildren": 0,
+      "firstChildTag": null,
+      "firstChildClass": null,
+      "visibleText": ""
+    },
+    {
+      "ts": 1785536858316,
+      "bodyTextLength": 0,
+      "rootChildren": 0,
+      "firstChildTag": null,
+      "firstChildClass": null,
+      "visibleText": ""
+    },
+    {
+      "ts": 1785536859327,
+      "bodyTextLength": 0,
+      "rootChildren": 0,
+      "firstChildTag": null,
+      "firstChildClass": null,
+      "visibleText": ""
+    },
+    {
+      "ts": 1785536860335,
+      "bodyTextLength": 0,
+      "rootChildren": 0,
+      "firstChildTag": null,
+      "firstChildClass": null,
+      "visibleText": ""
+    },
+    {
+      "ts": 1785536861351,
+      "bodyTextLength": 0,
+      "rootChildren": 0,
+      "firstChildTag": null,
+      "firstChildClass": null,
+      "visibleText": ""
+    },
+    {
+      "ts": 1785536862388,
+      "bodyTextLength": 0,
+      "rootChildren": 0,
+      "firstChildTag": null,
+      "firstChildClass": null,
+      "visibleText": ""
+    },
+    {
+      "ts": 1785536863408,
+      "bodyTextLength": 0,
+      "rootChildren": 0,
+      "firstChildTag": null,
+      "firstChildClass": null,
+      "visibleText": ""
+    },
+    {
+      "ts": 1785536864549,
+      "bodyTextLength": 0,
+      "rootChildren": 0,
+      "firstChildTag": null,
+      "firstChildClass": null,
+      "visibleText": ""
+    },
+    {
+      "ts": 1785536865633,
+      "bodyTextLength": 279,
+      "rootChildren": 1,
+      "firstChildTag": "DIV",
+      "firstChildClass": "group/sidebar-wrapper has-data-[variant=inset]:bg-sidebar flex min-h-svh w-full",
+      "visibleText": "Toggle SidebarNew taskSearchSkillsBright MemoryAutomationConnect MobileRemote ControlProjectsMAGoioioioiChat Smoke 1785528672366Agent TeamCHCarlos HenriquePlus PlanToggle SidebarBrightCode makes your "
+    },
+    {
+      "ts": 1785536866761,
+      "bodyTextLength": 285,
+      "rootChildren": 1,
+      "firstChildTag": "DIV",
+      "firstChildClass": "group/sidebar-wrapper has-data-[variant=inset]:bg-sidebar flex min-h-svh w-full",
+      "visibleText": "Toggle SidebarNew taskSearchSkillsBright MemoryAutomationConnect MobileRemote ControlProjectsMAGoioioioiChat Smoke 1785528672366Agent TeamCHCarlos HenriquePlus PlanToggle SidebarBrightCode makes your "
+    },
+    {
+      "ts": 1785536867777,
+      "bodyTextLength": 285,
+      "rootChildren": 1,
+      "firstChildTag": "DIV",
+      "firstChildClass": "group/sidebar-wrapper has-data-[variant=inset]:bg-sidebar flex min-h-svh w-full",
+      "visibleText": "Toggle SidebarNew taskSearchSkillsBright MemoryAutomationConnect MobileRemote ControlProjectsMAGoioioioiChat Smoke 1785528672366Agent TeamCHCarlos HenriquePlus PlanToggle SidebarBrightCode makes your "
+    },
+    {
+      "ts": 1785536868796,
+      "bodyTextLength": 285,
+      "rootChildren": 1,
+      "firstChildTag": "DIV",
+      "firstChildClass": "group/sidebar-wrapper has-data-[variant=inset]:bg-sidebar flex min-h-svh w-full",
+      "visibleText": "Toggle SidebarNew taskSearchSkillsBright MemoryAutomationConnect MobileRemote ControlProjectsMAGoioioioiChat Smoke 1785528672366Agent TeamCHCarlos HenriquePlus PlanToggle SidebarBrightCode makes your "
+    },
+    {
+      "ts": 1785536869821,
+      "bodyTextLength": 285,
+      "rootChildren": 1,
+      "firstChildTag": "DIV",
+      "firstChildClass": "group/sidebar-wrapper has-data-[variant=inset]:bg-sidebar flex min-h-svh w-full",
+      "visibleText": "Toggle SidebarNew taskSearchSkillsBright MemoryAutomationConnect MobileRemote ControlProjectsMAGoioioioiChat Smoke 1785528672366Agent TeamCHCarlos HenriquePlus PlanToggle SidebarBrightCode makes your "
+    },
+    {
+      "ts": 1785536870831,
+      "bodyTextLength": 285,
+      "rootChildren": 1,
+      "firstChildTag": "DIV",
+      "firstChildClass": "group/sidebar-wrapper has-data-[variant=inset]:bg-sidebar flex min-h-svh w-full",
+      "visibleText": "Toggle SidebarNew taskSearchSkillsBright MemoryAutomationConnect MobileRemote ControlProjectsMAGoioioioiChat Smoke 1785528672366Agent TeamCHCarlos HenriquePlus PlanToggle SidebarBrightCode makes your "
+    }
+  ],
+  "exceptions": [],
+  "consoleErrors": [],
+  "consoleTail": [
+    "[debug] [vite] connecting...",
+    "[debug] [vite] connected.",
+    "[info] %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold"
+  ]
+}
