@@ -444,7 +444,7 @@ async function workspaceReadFile(
       isBinary?: boolean
       error?: string
     }>('workspace_read_file', { projectId, relativePath })
-    if ((out.ok as unknown) === 'true' && !out.isBinary)
+    if (!out.isBinary)
       return { ok: true, content: out.contents, size: out.sizeBytes }
     return {
       ok: false,
