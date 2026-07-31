@@ -34,3 +34,7 @@ src-tauri/target/
 # Node sidecar build outputs (keep .gitkeep so the dir exists)
 node-sidecar/bin/*
 !node-sidecar/bin/.gitkeep
+
+# Local agent runtime / tooling scratch dirs
+.mavis-runtime/
+.cynos/
