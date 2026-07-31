@@ -8,6 +8,7 @@ fn app_version() -> String {
     env!("CARGO_PKG_VERSION").to_string()
 }
 
+mod proxy;
 mod sidecar;
 
 use tauri::Manager;
@@ -18,7 +19,7 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_shell::init())
-        .invoke_handler(tauri::generate_handler![ping, app_version])
+        .invoke_handler(tauri::generate_handler![ping, app_version, proxy::proxy_agent_runtime])
         .setup(|app| {
             // Spawn the Node sidecar synchronously so a broken
             // sidecar fails app boot loudly. The 5s ready timeout in
