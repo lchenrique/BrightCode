@@ -134,6 +134,10 @@ export function createProvider(config: CreateProviderConfig): IAgentProvider {
           headers,
           body: body ?? '',
         })
+        // Wire AbortSignal → handle.cancel so the renderer Stop button
+        // actually interrupts the upstream provider instead of just
+        // discarding the queue.
+        effectiveParams.signal?.addEventListener('abort', () => handle.cancel(), { once: true })
         // IMPORTANT: one context per stream. The handler accumulates
         // tool-call args, stop reason, model name, etc across chunks.
         // Re-creating the context per chunk silently drops every delta

@@ -3,12 +3,9 @@
 //! Mirrors `electron/main/git.ts::execGit`: spawn `git` in the
 //! registered project root, no shell, return stdout/stderr/exit.
 //!
-//! Security model:
-//!   * `args` is passed directly to `tokio::process::Command` — no
-//!     shell, no string interpolation, so the OS does the escaping.
-//!   * We still reject empty argv and flag-only invocations (a leading
-//!     `-` means the caller is treating this as a `git --exec-path`
-//!     style call rather than a subcommand) so the surface stays tight.
+//! Security model: `args` is passed directly to `tokio::process::Command`
+//! so the OS does argv escaping. We only reject empty args and bytes
+//! that would corrupt argv.
 
 use serde::Serialize;
 use tauri::State;
@@ -27,11 +24,11 @@ pub struct GitExecResult {
     pub exit_code: i32,
 }
 
-/// Allowlist helper: a "safe" arg is non-empty, does not start with `-`,
-/// and contains no characters we explicitly forbid (NUL, control bytes).
-/// Extracted so tests can pin the contract without spawning a process.
+/// Any non-empty, control-byte-free string is allowed. Git flags
+/// (`-v`, `--porcelain`, ...) are safe to forward since `Command::arg`
+/// keeps them inside argv — no shell, no injection risk.
 pub(crate) fn is_safe_arg(s: &str) -> bool {
-    if s.is_empty() || s.starts_with('-') {
+    if s.is_empty() {
         return false;
     }
     !s.bytes().any(|b| b == 0 || (b < 0x20 && b != b'\t'))
@@ -50,10 +47,6 @@ pub async fn git_exec(
         return Err("invalid args".to_string());
     }
 
-    // Match the Electron UI: there must be an active project, and the
-    // requested id must match it. Returning distinct errors helps the
-    // frontend tell "you forgot to pick a project" from "the project
-    // was removed" without exposing internal state.
     if state.active_project().await.is_none() {
         return Err("no active project".to_string());
     }
@@ -65,7 +58,6 @@ pub async fn git_exec(
 
     let mut cmd = Command::new("git");
     cmd.args(&args).current_dir(&cwd);
-    // Force pipe capture; never inherit a controlling TTY.
     cmd.stdin(std::process::Stdio::null());
     cmd.stdout(std::process::Stdio::piped());
     cmd.stderr(std::process::Stdio::piped());
@@ -92,24 +84,20 @@ mod tests {
     }
 
     #[test]
-    fn flag_only_args_rejected() {
-        assert!(!is_safe_arg("-v"));
-        assert!(!is_safe_arg("--version"));
-        assert!(!is_safe_arg("-"));
+    fn git_accepts_flags_and_refspecs() {
+        // The renderer sends common git flags alongside subcommands;
+        // Command::arg gives us argv-level safety so we forward them.
+        assert!(is_safe_arg("-v"));
+        assert!(is_safe_arg("--version"));
+        assert!(is_safe_arg("--porcelain"));
+        assert!(is_safe_arg("-"));
+        assert!(is_safe_arg("status"));
+        assert!(is_safe_arg("HEAD"));
+        assert!(is_safe_arg("origin/main"));
     }
 
     #[test]
-    fn is_safe_arg_accepts_subcommands_and_rejects_bad_bytes() {
-        // Common subcommands and refspecs.
-        assert!(is_safe_arg("status"));
-        assert!(is_safe_arg("log"));
-        assert!(is_safe_arg("diff"));
-        assert!(is_safe_arg("HEAD"));
-        assert!(is_safe_arg("/tmp/repo"));
-        assert!(is_safe_arg("src/main.rs"));
-        assert!(is_safe_arg("origin/main"));
-        // Embedded NUL or newline = reject (would break argv parsing
-        // on some platforms and is never a legitimate git arg).
+    fn is_safe_arg_rejects_bad_bytes() {
         assert!(!is_safe_arg("foo\0bar"));
         assert!(!is_safe_arg("foo\nbar"));
         assert!(!is_safe_arg("foo\rbar"));

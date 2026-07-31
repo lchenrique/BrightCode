@@ -53,6 +53,79 @@ function isTauri(): boolean {
   return typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window
 }
 
+async function resolveProjectIdForPath(path: string): Promise<string | undefined> {
+  if (!path) return undefined
+  try {
+    const projects = await invoke<Project[]>('projects_list')
+    const matches = projects.filter((project) => path.includes(project.path.replace(/\\/g, '/')))
+    if (matches.length === 0) return undefined
+    matches.sort((a, b) => b.path.length - a.path.length)
+    return matches[0]?.id
+  } catch {
+    return undefined
+  }
+}
+
+function skillIdFromPath(skillFilePath: string): string | undefined {
+  if (!skillFilePath) return undefined
+  const normalized = skillFilePath.replace(/\\/g, '/')
+  const marker = '/SKILL.md'
+  const index = normalized.lastIndexOf(marker)
+  if (index < 0) return undefined
+  const head = normalized.slice(0, index)
+  return head.split('/').filter(Boolean).pop()
+}
+
+async function skillsList(
+  activeProjectPath?: string,
+): Promise<DiscoveredSkill[]> {
+  if (!isTauri()) return []
+  try {
+    const projects = await invoke<Project[]>('projects_list')
+    const owner = projects.find((project) => project.path === activeProjectPath)
+    return await invoke<DiscoveredSkill[]>('skills_list', {
+      projectId: owner?.id ?? null,
+    })
+  } catch (e) {
+    console.warn('[bridge] skills_list failed:', e)
+    return []
+  }
+}
+
+async function skillsRead(filePath: string): Promise<string> {
+  if (!isTauri()) return ''
+  try {
+    const skillId = skillIdFromPath(filePath)
+    if (!skillId) throw new Error('could not derive skill id from path')
+    const projectId = await resolveProjectIdForPath(filePath)
+    return await invoke<string>('skills_read', {
+      skillId,
+      projectId: projectId ?? null,
+    })
+  } catch (e) {
+    console.warn('[bridge] skills_read failed:', e)
+    return ''
+  }
+}
+
+async function skillsWrite(filePath: string, content: string): Promise<boolean> {
+  if (!isTauri()) return false
+  try {
+    const skillId = skillIdFromPath(filePath)
+    if (!skillId) throw new Error('could not derive skill id from path')
+    const projectId = await resolveProjectIdForPath(filePath)
+    await invoke('skills_write', {
+      skillId,
+      contents: content,
+      projectId: projectId ?? null,
+    })
+    return true
+  } catch (e) {
+    console.warn('[bridge] skills_write failed:', e)
+    return false
+  }
+}
+
 function onTauriEvent<T>(
   event: string,
   handler: (payload: T) => void,
@@ -137,7 +210,7 @@ async function projectsAdd(
       project?: Project
       error?: string
     }>('projects_add', { path, label })
-    if (out.ok && out.project) return { ok: true, project: out.project }
+    if ((out.ok as unknown) === 'true' && out.project) return { ok: true, project: out.project }
     return { ok: false, error: out.error ?? 'add failed' }
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : String(e) }
@@ -153,7 +226,7 @@ async function projectsRemove(
       'projects_remove',
       { id },
     )
-    if (out.ok) return { ok: true }
+    if ((out.ok as unknown) === 'true') return { ok: true }
     return { ok: false, error: out.error ?? 'remove failed' }
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : String(e) }
@@ -281,7 +354,7 @@ async function fsValidate(
       error?: string
       code?: string
     }>('fs_validate', { path })
-    if (out.ok && out.real_path)
+    if ((out.ok as unknown) === 'true' && out.real_path)
       return { ok: true, realPath: out.real_path }
     return { ok: false, error: out.error ?? 'validate failed' }
   } catch (e) {
@@ -302,7 +375,7 @@ async function fsClone(
       'fs_clone',
       { url, dest },
     )
-    if (out.ok && out.path) return { ok: true, path: out.path }
+    if ((out.ok as unknown) === 'true' && out.path) return { ok: true, path: out.path }
     return { ok: false, error: out.error ?? 'clone failed' }
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : String(e) }
@@ -371,7 +444,7 @@ async function workspaceReadFile(
       isBinary?: boolean
       error?: string
     }>('workspace_read_file', { projectId, relativePath })
-    if (out.ok && !out.isBinary)
+    if ((out.ok as unknown) === 'true' && !out.isBinary)
       return { ok: true, content: out.contents, size: out.sizeBytes }
     return {
       ok: false,
@@ -434,43 +507,6 @@ async function gitExec(
     }
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : String(e) }
-  }
-}
-
-// ── skills ────────────────────────────────────────────────────────────
-
-async function skillsList(
-  activeProjectPath?: string,
-): Promise<DiscoveredSkill[]> {
-  if (!isTauri()) return []
-  try {
-    return await invoke<DiscoveredSkill[]>('skills_list', {
-      projectId: activeProjectPath ?? null,
-    })
-  } catch (e) {
-    console.warn('[bridge] skills_list failed:', e)
-    return []
-  }
-}
-
-async function skillsRead(filePath: string): Promise<string> {
-  if (!isTauri()) return ''
-  try {
-    return await invoke<string>('skills_read', { filePath })
-  } catch (e) {
-    console.warn('[bridge] skills_read failed:', e)
-    return ''
-  }
-}
-
-async function skillsWrite(filePath: string, content: string): Promise<boolean> {
-  if (!isTauri()) return false
-  try {
-    await invoke('skills_write', { filePath, contents: content })
-    return true
-  } catch (e) {
-    console.warn('[bridge] skills_write failed:', e)
-    return false
   }
 }
 

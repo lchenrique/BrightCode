@@ -36,6 +36,7 @@ pub enum ValidateResult {
         exists: bool,
         is_dir: bool,
         is_file: bool,
+        real_path: String,
     },
     False { error: String },
 }
@@ -116,21 +117,34 @@ pub async fn fs_browse_file(app: AppHandle<impl Runtime>) -> Result<BrowseFileRe
 #[tauri::command]
 pub async fn fs_validate(path: String) -> Result<ValidateResult, String> {
     let p = Path::new(&path);
-    match tokio::fs::metadata(p).await {
-        Ok(meta) => Ok(ValidateResult::True {
-            exists: true,
-            is_dir: meta.is_dir(),
-            is_file: meta.is_file(),
-        }),
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(ValidateResult::True {
-            exists: false,
-            is_dir: false,
-            is_file: false,
-        }),
-        Err(e) => Ok(ValidateResult::False {
-            error: e.to_string(),
-        }),
-    }
+    let meta = match tokio::fs::metadata(p).await {
+        Ok(meta) => meta,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            return Ok(ValidateResult::True {
+                exists: false,
+                is_dir: false,
+                is_file: false,
+                real_path: String::new(),
+            });
+        }
+        Err(e) => {
+            return Ok(ValidateResult::False {
+                error: e.to_string(),
+            });
+        }
+    };
+    // Canonicalize (resolve symlinks) to give the renderer the real path;
+    // fall back to the raw input if canonicalize fails (e.g. UNC paths).
+    let real_path = tokio::fs::canonicalize(p)
+        .await
+        .map(|cp| cp.to_string_lossy().to_string())
+        .unwrap_or_else(|_| path.clone());
+    Ok(ValidateResult::True {
+        exists: true,
+        is_dir: meta.is_dir(),
+        is_file: meta.is_file(),
+        real_path,
+    })
 }
 
 #[tauri::command]

@@ -34,6 +34,21 @@ pub struct SkillRecord {
     pub exists: bool,
 }
 
+/// Renderer-shape return for `skills.list` so legacy callers (SkillsView,
+/// ChatSurface system prompt) can keep using `skillFilePath` /
+/// `folderPath` / `sourceLabel`. Built on top of `SkillRecord`.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DiscoveredSkill {
+    pub id: String,
+    pub name: String,
+    pub description: String,
+    pub source: String,
+    pub source_label: String,
+    pub folder_path: String,
+    pub skill_file_path: String,
+}
+
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SkillReadResult {
@@ -41,15 +56,44 @@ pub struct SkillReadResult {
     pub path: String,
 }
 
+pub(crate) fn source_label_for(source: &str) -> &'static str {
+    match source {
+        "user" => "User Library",
+        "project" => "Project Local",
+        _ => "Skills Library",
+    }
+}
+
+fn to_discovered(record: SkillRecord) -> DiscoveredSkill {
+    let folder_path = PathBuf::from(&record.path)
+        .parent()
+        .map(|p| path_to_string(p))
+        .unwrap_or_default();
+    let name = if record.source == "user" {
+        record.id.clone()
+    } else {
+        record.name.clone()
+    };
+    DiscoveredSkill {
+        id: record.id,
+        name,
+        description: record.description,
+        source: record.source.clone(),
+        source_label: source_label_for(&record.source).to_string(),
+        folder_path,
+        skill_file_path: record.path,
+    }
+}
+
 #[tauri::command]
 pub async fn skills_list(
     state: State<'_, ProjectsStore>,
     project_id: Option<String>,
-) -> Result<Vec<SkillRecord>, String> {
-    let mut out: Vec<SkillRecord> = Vec::new();
+) -> Result<Vec<DiscoveredSkill>, String> {
+    let mut records: Vec<SkillRecord> = Vec::new();
 
     if let Some(root) = user_skill_root() {
-        collect_from_root(&root, "user", &mut out);
+        collect_from_root(&root, "user", &mut records);
     }
 
     if let Some(pid) = project_id {
@@ -58,19 +102,19 @@ pub async fn skills_list(
             .await
             .ok_or_else(|| format!("project not found: {pid}"))?;
         let root = project_root(&project.path);
-        collect_from_root(&root, "project", &mut out);
+        collect_from_root(&root, "project", &mut records);
     }
 
-    Ok(out)
+    Ok(records.into_iter().map(to_discovered).collect())
 }
 
 #[tauri::command]
 pub async fn skills_read(
     state: State<'_, ProjectsStore>,
-    project_id: Option<String>,
     skill_id: String,
+    project_id: Option<String>,
 ) -> Result<SkillReadResult, String> {
-    let (root, src) = resolve_root(&state, project_id).await?;
+    let (root, _src) = resolve_root(&state, project_id).await?;
     let skill_dir = skill_id_safe(&skill_id)?;
     let skill_md = root.join(&skill_dir).join(SKILL_FILE);
     let path_str = path_to_string(&skill_md);
@@ -86,7 +130,6 @@ pub async fn skills_read(
     }
     let contents = String::from_utf8(bytes)
         .map_err(|e| format!("skill file is not valid UTF-8: {e}"))?;
-    let _ = src; // suppress unused warning on no-project path
     Ok(SkillReadResult {
         contents,
         path: path_str,
@@ -96,9 +139,9 @@ pub async fn skills_read(
 #[tauri::command]
 pub async fn skills_write(
     state: State<'_, ProjectsStore>,
-    project_id: Option<String>,
     skill_id: String,
     contents: String,
+    project_id: Option<String>,
 ) -> Result<(), String> {
     if contents.len() > MAX_BYTES {
         return Err(format!(
