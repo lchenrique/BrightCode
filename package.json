@@ -14,7 +14,9 @@
     "tauri:build": "tauri build",
     "lint": "oxlint",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "sidecar:build": "tsc -p node-sidecar/tsconfig.json",
+    "sidecar:dev": "tsx watch node-sidecar/server.ts"
   },
   "dependencies": {
     "@dicebear/collection": "^9.4.2",
