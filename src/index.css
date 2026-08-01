@@ -739,3 +739,36 @@
   }
 }
 
+
+/* -- User-controlled UI scale (Settings ? Appearance ? Text size) ----
+ * Uses the CSS `zoom` property so every existing text-[Npx] and rem-based
+ * rule scales proportionally without rewriting the whole stylesheet. Chrome
+ * + WebView2 (Edge) + the Tauri shell on Windows all support `zoom`.
+ */
+:root[data-font-scale='xs']   { zoom: 0.85; }
+:root[data-font-scale='s']    { zoom: 0.93; }
+:root[data-font-scale='m']    { zoom: 1; }
+:root[data-font-scale='l']    { zoom: 1.12; }
+:root[data-font-scale='xl']   { zoom: 1.25; }
+
+/* -- Row density (Settings ? Appearance) -----------------------------
+ * A single CSS variable that components can opt into via padding.
+ * Compact = -2px on vertical padding for list rows / toolbar buttons.
+ */
+:root[data-density='compact'] {
+  --row-density-y: 2px;
+  --row-density-x: 6px;
+}
+:root[data-density='comfortable'] {
+  --row-density-y: 6px;
+  --row-density-x: 10px;
+}
+
+/* Honour the user's OS-level reduced-motion preference in addition to
+ * the in-app font-scale; the two are independent. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    transition-duration: 0.001ms !important;
+  }
+}
