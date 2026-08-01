@@ -752,23 +752,22 @@
 /* -- User-controlled UI scale (Settings → Appearance → Text size) ----
  * Visual scale via `transform: scale()` on #root + an inverse width/height
  * so the layout box shrinks in the same proportion that the rendering
- * grows. That way:
+ * grows. The scale is a continuous number (0.85 → 2.0) read from the
+ * `--font-scale` CSS custom property that use-theme writes to #root.
+ * That way:
  *   - everything scales (text-[Npx], rem-based, icons, paddings — all of
  *     it, not just rem-derived sizes like a bare `font-size` swap would)
- *   - the layout box fits the viewport, so the chat input (and anything
- *     else pinned to the bottom) never gets clipped by overflow: hidden
+ *   - the layout box always fits the viewport, so the chat input (and
+ *     anything else pinned to the bottom) never gets clipped
  * `transform-origin: top left` keeps the scaled content anchored to the
  * top-left corner instead of drifting toward the center. */
 #root {
   transform-origin: top left;
-  width: 100%;
-  height: 100dvh;
+  --font-scale: 1;
+  transform: scale(var(--font-scale));
+  width: calc(100% / var(--font-scale));
+  height: calc(100dvh / var(--font-scale));
 }
-#root[data-font-scale='xs'] { transform: scale(0.85); width: calc(100% / 0.85); height: calc(100dvh / 0.85); }
-#root[data-font-scale='s']  { transform: scale(0.93); width: calc(100% / 0.93); height: calc(100dvh / 0.93); }
-#root[data-font-scale='m']  { transform: scale(1); }
-#root[data-font-scale='l']  { transform: scale(1.12); width: calc(100% / 1.12); height: calc(100dvh / 1.12); }
-#root[data-font-scale='xl'] { transform: scale(1.25); width: calc(100% / 1.25); height: calc(100dvh / 1.25); }
 
 /* Clamp the document to the viewport so the body never grows past the
  * window — without this, a scale > 1 would let <body> grow taller than
@@ -785,6 +784,64 @@ body {
 #root {
   display: flex;
   flex-direction: column;
+}
+
+/* -- Text-size slider (Settings → Appearance → Text size) --------------
+ * Native <input type="range"> styled to match the rest of the dark UI.
+ * The track is the muted-foreground at 30% alpha, the filled portion
+ * uses primary, and the thumb is a primary-filled circle with a subtle
+ * ring on hover/focus. Unlayered so it wins over any Tailwind reset. */
+.brightcode-range {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 4px;
+  border-radius: 9999px;
+  background: linear-gradient(
+    to right,
+    var(--primary) 0%,
+    var(--primary) calc((var(--range-progress, 0)) * 100%),
+    color-mix(in oklch, var(--muted-foreground) 30%, transparent) calc((var(--range-progress, 0)) * 100%),
+    color-mix(in oklch, var(--muted-foreground) 30%, transparent) 100%
+  );
+  outline: none;
+}
+.brightcode-range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 9999px;
+  background: var(--primary);
+  border: 2px solid var(--background);
+  box-shadow: 0 0 0 1px color-mix(in oklch, var(--foreground) 18%, transparent);
+  cursor: grab;
+  transition: transform 120ms ease, box-shadow 120ms ease;
+}
+.brightcode-range::-webkit-slider-thumb:hover {
+  transform: scale(1.12);
+  box-shadow: 0 0 0 4px color-mix(in oklch, var(--primary) 25%, transparent);
+}
+.brightcode-range::-webkit-slider-thumb:active {
+  cursor: grabbing;
+  box-shadow: 0 0 0 5px color-mix(in oklch, var(--primary) 35%, transparent);
+}
+.brightcode-range::-moz-range-thumb {
+  width: 16px;
+  height: 16px;
+  border-radius: 9999px;
+  background: var(--primary);
+  border: 2px solid var(--background);
+  box-shadow: 0 0 0 1px color-mix(in oklch, var(--foreground) 18%, transparent);
+  cursor: grab;
+  transition: transform 120ms ease, box-shadow 120ms ease;
+}
+.brightcode-range::-moz-range-thumb:hover {
+  transform: scale(1.12);
+  box-shadow: 0 0 0 4px color-mix(in oklch, var(--primary) 25%, transparent);
+}
+.brightcode-range:focus-visible {
+  box-shadow: 0 0 0 3px color-mix(in oklch, var(--primary) 30%, transparent);
+  border-radius: 9999px;
 }
 
 /* -- Row density (Settings ? Appearance) -----------------------------

@@ -1,6 +1,13 @@
 import { useState } from 'react'
 import { useTheme } from '@/hooks/use-theme'
 import {
+  FONT_SCALE_MAX,
+  FONT_SCALE_MIN,
+  FONT_SCALE_STEP,
+  FONT_SCALE_TICKS,
+  fontScaleLabel,
+} from '@/hooks/use-theme'
+import {
   ChartBar,
   CircleUser,
   Code2,
@@ -301,14 +308,6 @@ function ThemeMockCard({
   )
 }
 
-const fontScales = [
-  { id: 'xs', label: 'XS' },
-  { id: 's', label: 'S' },
-  { id: 'm', label: 'M' },
-  { id: 'l', label: 'L' },
-  { id: 'xl', label: 'XL' },
-] as const
-
 const densities = [
   { id: 'compact', label: 'Compact', hint: 'Tighter rows, more content on screen.' },
   { id: 'comfortable', label: 'Comfortable', hint: 'Default spacing, easier to scan.' },
@@ -356,32 +355,84 @@ function AppearanceTab() {
         </div>
       </div>
 
-      {/* Section 2: Text size (zoom of the whole UI) */}
+      {/* Section 2: Text size (continuous slider; the layout box shrinks
+          inversely to the visual scale so nothing gets clipped) */}
       <div className="flex flex-col gap-2.5">
-        <SectionLabel>Text size</SectionLabel>
+        <div className="flex items-baseline justify-between">
+          <SectionLabel>Text size</SectionLabel>
+          <div className="flex items-baseline gap-1.5">
+            <span className="text-foreground text-[12px] font-semibold tabular-nums">
+              {fontScale.toFixed(2)}x
+            </span>
+            <span className="text-muted-foreground text-[11px] font-medium">
+              {fontScaleLabel(fontScale)}
+            </span>
+          </div>
+        </div>
         <p className="text-muted-foreground text-[11.5px]">
-          Scales every panel, button and label in the app.
+          Scales every panel, button and label in the app. Drag for fine
+          control — the layout box shrinks as the visual grows so nothing
+          is clipped.
         </p>
-        <div className="grid grid-cols-5 gap-2">
-          {fontScales.map(({ id, label }) => {
-            const selected = fontScale === id
-            return (
-              <button
-                key={id}
-                type="button"
-                onClick={() => setFontScale(id)}
-                aria-pressed={selected}
-                className={cn(
-                  'flex items-center justify-center rounded-lg border py-2.5 text-xs font-semibold transition-all cursor-pointer',
-                  selected
-                    ? 'border-primary bg-primary/10 text-primary'
-                    : 'border-border/60 hover:border-border text-muted-foreground hover:text-foreground',
-                )}
-              >
-                {label}
-              </button>
-            )
-          })}
+        <div className="flex flex-col gap-2 pt-1">
+          <input
+            type="range"
+            min={FONT_SCALE_MIN}
+            max={FONT_SCALE_MAX}
+            step={FONT_SCALE_STEP}
+            value={fontScale}
+            onChange={(event) => setFontScale(Number(event.target.value))}
+            aria-label="Text size"
+            className="brightcode-range w-full cursor-pointer"
+            style={
+              {
+                '--range-progress':
+                  (fontScale - FONT_SCALE_MIN) /
+                  (FONT_SCALE_MAX - FONT_SCALE_MIN),
+              } as React.CSSProperties
+            }
+          />
+          {/* Tick row — labels at the named checkpoints. Highlights the
+              active range so the user can see how far they've pushed past
+              the default "M". */}
+          <div className="relative h-4">
+            {FONT_SCALE_TICKS.map((tick) => {
+              const pct =
+                ((tick.value - FONT_SCALE_MIN) /
+                  (FONT_SCALE_MAX - FONT_SCALE_MIN)) *
+                100
+              const active = Math.abs(tick.value - fontScale) < 1e-6
+              return (
+                <button
+                  key={tick.label}
+                  type="button"
+                  onClick={() => setFontScale(tick.value)}
+                  title={`${tick.value.toFixed(2)}x`}
+                  className="group absolute top-0 -translate-x-1/2 cursor-pointer"
+                  style={{ left: `${pct}%` }}
+                >
+                  <span
+                    className={cn(
+                      'block h-1.5 w-px transition-colors',
+                      active
+                        ? 'bg-primary'
+                        : 'bg-muted-foreground/30 group-hover:bg-muted-foreground/60',
+                    )}
+                  />
+                  <span
+                    className={cn(
+                      'mt-0.5 block text-[9px] font-medium transition-colors',
+                      active
+                        ? 'text-primary'
+                        : 'text-muted-foreground/60 group-hover:text-muted-foreground',
+                    )}
+                  >
+                    {tick.label}
+                  </span>
+                </button>
+              )
+            })}
+          </div>
         </div>
       </div>
 
