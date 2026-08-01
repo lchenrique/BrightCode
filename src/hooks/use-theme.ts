@@ -62,13 +62,17 @@ export function useTheme() {
   )
 
   useEffect(() => {
-    const root = document.documentElement
+    const html = document.documentElement
+    // data-font-scale must live on the React root, not on <html>.
+    // Setting CSS zoom on <html> makes <body> grow past the viewport,
+    // leaving a black band at the bottom of the window.
+    const rootEl = document.getElementById('root') ?? html
 
     // 1. Set data-theme for preset
     if (themePreset === 'default') {
-      root.removeAttribute('data-theme')
+      html.removeAttribute('data-theme')
     } else {
-      root.setAttribute('data-theme', themePreset)
+      html.setAttribute('data-theme', themePreset)
     }
 
     // 2. Apply dark/light class
@@ -76,15 +80,15 @@ export function useTheme() {
       colorMode === 'dark' ||
       (colorMode === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches)
 
-    root.classList.toggle('dark', isDark)
-    root.classList.toggle('light', !isDark)
+    html.classList.toggle('dark', isDark)
+    html.classList.toggle('light', !isDark)
 
     // 3. Apply font scale + density + word wrap via data attributes.
     //    index.css reads these and applies the actual CSS (zoom for size,
     //    --row-density CSS var, and wordWrap toggles monaco option).
-    root.setAttribute('data-font-scale', fontScale)
-    root.setAttribute('data-density', density)
-    root.setAttribute('data-word-wrap', String(editorWordWrap))
+    rootEl.setAttribute('data-font-scale', fontScale)
+    html.setAttribute('data-density', density)
+    html.setAttribute('data-word-wrap', String(editorWordWrap))
 
     localStorage.setItem(STORAGE_MODE, colorMode)
     localStorage.setItem(STORAGE_PRESET, themePreset)
@@ -95,8 +99,8 @@ export function useTheme() {
     if (colorMode === 'system') {
       const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)')
       const listener = (e: MediaQueryListEvent) => {
-        root.classList.toggle('dark', e.matches)
-        root.classList.toggle('light', !e.matches)
+        html.classList.toggle('dark', e.matches)
+        html.classList.toggle('light', !e.matches)
       }
       mediaQuery.addEventListener('change', listener)
       return () => mediaQuery.removeEventListener('change', listener)

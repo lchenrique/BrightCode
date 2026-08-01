@@ -745,11 +745,11 @@
  * rule scales proportionally without rewriting the whole stylesheet. Chrome
  * + WebView2 (Edge) + the Tauri shell on Windows all support `zoom`.
  */
-:root[data-font-scale='xs']   { zoom: 0.85; }
-:root[data-font-scale='s']    { zoom: 0.93; }
-:root[data-font-scale='m']    { zoom: 1; }
-:root[data-font-scale='l']    { zoom: 1.12; }
-:root[data-font-scale='xl']   { zoom: 1.25; }
+#root[data-font-scale='xs']   { zoom: 0.85; }
+#root[data-font-scale='s']    { zoom: 0.93; }
+#root[data-font-scale='m']    { zoom: 1; }
+#root[data-font-scale='l']    { zoom: 1.12; }
+#root[data-font-scale='xl']   { zoom: 1.25; }
 
 /* -- Row density (Settings ? Appearance) -----------------------------
  * A single CSS variable that components can opt into via padding.
