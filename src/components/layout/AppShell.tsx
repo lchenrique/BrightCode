@@ -143,7 +143,7 @@ export function AppShell() {
         } as React.CSSProperties
       }
     >
-      <div className="flex h-svh w-full">
+      <div className="flex h-full w-full">
         <AppSidebar
           activeTaskId={view.kind === 'task' ? view.id : undefined}
           onNewTask={() => setView({ kind: 'welcome' })}
