@@ -37,6 +37,7 @@ use tokio::sync::{oneshot, Mutex};
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct OAuthConfig {
+    #[allow(dead_code)] // deserialized from JSON, not read in code
     pub provider_id: String,
     pub client_id: String,
     pub authorize_url: String,

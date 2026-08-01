@@ -163,7 +163,7 @@ pub async fn fs_clone(url: String, dest: String) -> Result<CloneResult, String> 
             .await
             .map_err(|e| format!("failed to create parent {parent:?}: {e}"))?;
     }
-    let mut child = Command::new("git")
+    let child = Command::new("git")
         .args(["clone", &url, &dest])
         .stdout(Stdio::null())
         .stderr(Stdio::piped())

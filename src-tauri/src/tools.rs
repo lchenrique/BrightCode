@@ -20,7 +20,6 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
 
-use serde::Serialize;
 use serde_json::{json, Value};
 use tauri::{AppHandle, Emitter, State};
 use tokio::io::AsyncReadExt;
@@ -54,46 +53,6 @@ impl ToolsState {
     pub fn new() -> Self {
         Self::default()
     }
-}
-
-#[derive(Debug, Serialize)]
-#[serde(tag = "name", rename_all = "camelCase")]
-pub enum ToolArgs {
-    #[serde(rename = "read_file")]
-    ReadFile { path: String },
-    #[serde(rename = "write_file")]
-    WriteFile { path: String, content: String },
-    #[serde(rename = "edit_file")]
-    EditFile {
-        path: String,
-        old_text: String,
-        new_text: String,
-        #[serde(default)]
-        replace_all: bool,
-    },
-    #[serde(rename = "list_files")]
-    ListFiles {
-        path: Option<String>,
-        recursive: Option<bool>,
-    },
-    #[serde(rename = "search_files")]
-    SearchFiles {
-        query: String,
-        path: Option<String>,
-        include_pattern: Option<String>,
-    },
-    #[serde(rename = "list_skills")]
-    ListSkills { query: Option<String> },
-    #[serde(rename = "read_skill")]
-    ReadSkill { skill: String },
-    #[serde(rename = "read_skill_file")]
-    ReadSkillFile { skill: String, path: String },
-    #[serde(rename = "bash")]
-    Bash {
-        command: String,
-        cwd: Option<String>,
-        timeout_ms: Option<u64>,
-    },
 }
 
 #[tauri::command]

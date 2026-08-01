@@ -76,6 +76,7 @@ async fn persist<R: Runtime>(app: &AppHandle<R>, state: &StoredTasksState) -> Re
         .map_err(|e| format!("failed to write {path:?}: {e}"))
 }
 
+#[allow(dead_code)] // used in task_id_new_unique test below
 fn task_id_new() -> String {
     let nanos = SystemTime::now()
         .duration_since(UNIX_EPOCH)

@@ -45,7 +45,9 @@ const ALLOWED_HOSTS: &[&str] = &[
 #[serde(rename_all = "camelCase")]
 pub struct StreamStartPayload {
     pub request_id: String,
+    #[allow(dead_code)] // deserialized from JSON, not read in code
     pub provider_id: String,
+    #[allow(dead_code)] // deserialized from JSON, not read in code
     pub api_format: String,
     pub url: String,
     pub method: String,

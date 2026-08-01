@@ -52,17 +52,6 @@ pub struct TerminalCreateResult {
     pub cwd: String,
 }
 
-#[derive(Debug, Serialize)]
-#[serde(tag = "kind", rename_all = "camelCase")]
-pub enum TerminalEvent {
-    Data { session_id: String, data: String },
-    Exit {
-        session_id: String,
-        exit_code: u32,
-        signal: Option<u32>,
-    },
-}
-
 fn clamp_dimension(value: Option<u16>, fallback: u16, min: u16, max: u16) -> u16 {
     match value {
         Some(v) if (min..=max).contains(&v) => v,
