@@ -752,11 +752,23 @@
 #root[data-font-scale='xl']   { zoom: 1.25; }
 
 /* The zoom above scales the visual content of #root. With a zoom > 1,
- * the content becomes larger than the viewport, so the body needs to
- * be allowed to scroll vertically — otherwise the chat input and the
- * sidebar's user card become unreachable. Each inner surface (sidebar
- * content, main content) carries its own scroll handle so the body
- * scroll is the only one that runs the full height of the window. */
+ * the content becomes larger than the viewport, so html/body/#root
+ * are clamped to the viewport height and each inner surface (sidebar
+ * content, main) carries its own scroll. Without this, the React
+ * container #root collapses to the natural size of its children,
+ * leaving an empty dark band at the bottom of the window. */
+html,
+body,
+#root {
+  height: 100dvh;
+  max-height: 100dvh;
+  overflow: hidden;
+}
+
+#root {
+  display: flex;
+  flex-direction: column;
+}
 
 /* -- Row density (Settings ? Appearance) -----------------------------
  * A single CSS variable that components can opt into via padding.
