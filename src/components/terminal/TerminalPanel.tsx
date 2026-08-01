@@ -164,7 +164,7 @@ export function TerminalPanel({
   )
 }
 
-function TerminalSessionView({
+export function TerminalSessionView({
   instanceKey,
   project,
   active,
