@@ -13,10 +13,11 @@
     "windows": [
       {
         "title": "BrightCode",
-        "width": 1280,
-        "height": 800,
+        "width": 1400,
+        "height": 900,
         "minWidth": 960,
         "minHeight": 600,
+        "maximized": true,
         "additionalBrowserArgs": "--remote-debugging-port=9222 --disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection"
       }
     ],
