@@ -875,10 +875,14 @@ async function terminalCreate(
   if (!isTauri())
     return { ok: false, error: 'not running under Tauri' }
   try {
-    return await invoke<TerminalCreateResult>('terminal_create', {
-      projectId,
-      dimensions: dimensions ?? null,
-    })
+    const result = await invoke<{ sessionId: string; shell: string; cwd: string }>(
+      'terminal_create',
+      {
+        projectId,
+        dimensions: dimensions ?? null,
+      },
+    )
+    return { ok: true, ...result }
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : String(e) }
   }
