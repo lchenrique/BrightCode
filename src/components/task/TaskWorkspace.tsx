@@ -2,7 +2,9 @@ import {
   Columns2,
   FileCode2,
   LoaderCircle,
+  Plus,
   Save,
+  SquareTerminal,
   X,
 } from 'lucide-react'
 import {
@@ -23,7 +25,10 @@ import {
 } from '@/components/files/ProjectFileTreePanel'
 import { EnvironmentalInfoPanel } from '@/components/envinfo/EnvironmentalInfoPanel'
 import { ViewTopBar } from '@/components/layout/ViewTopBar'
-import { TerminalPanel } from '@/components/terminal/TerminalPanel'
+import {
+  TerminalPanel,
+  TerminalSessionView,
+} from '@/components/terminal/TerminalPanel'
 import {
   consumePendingProjectFileOpen,
   notifyProjectFilesChanged,
@@ -34,6 +39,12 @@ import type { Project } from '@/lib/projects/store'
 import { cn } from '@/lib/utils'
 
 import { DocumentDualEditor } from '@/components/files/DocumentDualEditor'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 
 const CodeEditor = lazy(() =>
   import('@/components/files/CodeEditor').then((module) => ({
@@ -47,6 +58,11 @@ type OpenFile = {
   language: string
   content: string
   savedContent: string
+}
+
+type TerminalTab = {
+  id: string
+  title: string
 }
 
 const SPLIT_DEFAULT_PERCENT = 50
@@ -102,27 +118,37 @@ function detectLanguage(path: string): string {
 
 function WorkspaceTabs({
   tabs,
+  terminalTabs,
   activeSurface,
   selectedFilePath,
+  selectedTerminalId,
   splitFilePath,
   onSelectFile,
   onCloseFile,
+  onSelectTerminal,
+  onCloseTerminal,
   onSplitFile,
   onDragStateChange,
+  onOpenTerminal,
 }: {
   tabs: OpenFile[]
-  activeSurface: 'chat' | 'file'
+  terminalTabs: TerminalTab[]
+  activeSurface: 'chat' | 'file' | 'terminal'
   selectedFilePath: string | null
+  selectedTerminalId: string | null
   splitFilePath: string | null
   onSelectFile: (path: string) => void
   onCloseFile: (path: string) => void
+  onSelectTerminal: (id: string) => void
+  onCloseTerminal: (id: string) => void
   onSplitFile: (path: string | null) => void
   onDragStateChange: (path: string | null) => void
+  onOpenTerminal: () => void
 }) {
   return (
     <div
       role="tablist"
-      aria-label="Open files"
+      aria-label="Open tabs"
       className="flex h-full min-w-0 overflow-x-auto overflow-y-hidden [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
     >
       {tabs.map((file) => {
@@ -219,6 +245,77 @@ function WorkspaceTabs({
           </div>
         )
       })}
+
+      {terminalTabs.map((term) => {
+        const active =
+          activeSurface === 'terminal' && selectedTerminalId === term.id
+        return (
+          <div
+            key={term.id}
+            role="tab"
+            aria-selected={active}
+            tabIndex={0}
+            title={term.title}
+            data-terminal-tab={term.id}
+            className={cn(
+              'group relative flex h-full max-w-[170px] min-w-[104px] shrink-0 items-center gap-1.5 border-l px-2.5 text-[11px]',
+              active
+                ? 'bg-background text-foreground'
+                : 'text-muted-foreground hover:bg-accent/40 hover:text-foreground',
+            )}
+            onClick={() => onSelectTerminal(term.id)}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter' || event.key === ' ') {
+                event.preventDefault()
+                onSelectTerminal(term.id)
+              }
+            }}
+            onAuxClick={(event) => {
+              if (event.button === 1) onCloseTerminal(term.id)
+            }}
+          >
+            {active && (
+              <span className="bg-primary absolute inset-x-0 bottom-0 h-0.5" />
+            )}
+            <SquareTerminal className="size-3.5 shrink-0" />
+            <span className="truncate">{term.title}</span>
+            <button
+              type="button"
+              aria-label={`Close ${term.title}`}
+              className="hover:bg-accent ml-auto inline-flex size-4.5 shrink-0 items-center justify-center rounded"
+              onClick={(event) => {
+                event.stopPropagation()
+                onCloseTerminal(term.id)
+              }}
+            >
+              <X className="size-3 opacity-0 group-hover:opacity-100" />
+            </button>
+          </div>
+        )
+      })}
+
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <button
+            type="button"
+            aria-label="Open new tab"
+            title="Open new tab"
+            className="text-muted-foreground hover:text-foreground hover:bg-accent/40 inline-flex h-full w-9 shrink-0 items-center justify-center border-l"
+            data-new-tab-trigger
+          >
+            <Plus className="size-3.5" />
+          </button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="start" sideOffset={4}>
+          <DropdownMenuItem
+            onSelect={() => onOpenTerminal()}
+            data-new-tab-item="terminal"
+          >
+            <SquareTerminal className="size-3.5" />
+            Open terminal
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
     </div>
   )
 }
@@ -246,8 +343,12 @@ export function TaskWorkspace({
   onToggleEnvInfo?: () => void
 }) {
   const [tabs, setTabs] = useState<OpenFile[]>([])
-  const [activeSurface, setActiveSurface] = useState<'chat' | 'file'>('chat')
+  const [terminalTabs, setTerminalTabs] = useState<TerminalTab[]>([])
+  const [activeSurface, setActiveSurface] = useState<'chat' | 'file' | 'terminal'>(
+    'chat',
+  )
   const [selectedFilePath, setSelectedFilePath] = useState<string | null>(null)
+  const [selectedTerminalId, setSelectedTerminalId] = useState<string | null>(null)
   const [splitFilePath, setSplitFilePath] = useState<string | null>(null)
   const [draggedTabPath, setDraggedTabPath] = useState<string | null>(null)
   const [splitPercent, setSplitPercent] = useState(() => {
@@ -280,8 +381,10 @@ export function TaskWorkspace({
 
   useEffect(() => {
     setTabs([])
+    setTerminalTabs([])
     setActiveSurface('chat')
     setSelectedFilePath(null)
+    setSelectedTerminalId(null)
     setSplitFilePath(null)
     setDraggedTabPath(null)
     setError(null)
@@ -467,6 +570,43 @@ export function TaskWorkspace({
     }
   }, [])
 
+  const openTerminalTab = useCallback(() => {
+    if (!project) return
+    const nextNumber = terminalTabs.length + 1
+    const id = `term-${Date.now()}-${nextNumber}`
+    const tab: TerminalTab = { id, title: `Terminal ${nextNumber}` }
+    setTerminalTabs((current) => [...current, tab])
+    setSelectedTerminalId(id)
+    setActiveSurface('terminal')
+  }, [project, terminalTabs.length])
+
+  const closeTerminalTab = useCallback(
+    (id: string) => {
+      setTerminalTabs((current) => {
+        const next = current.filter((tab) => tab.id !== id)
+        if (selectedTerminalId === id) {
+          if (next.length === 0) {
+            setSelectedTerminalId(null)
+            setActiveSurface('chat')
+          } else {
+            setSelectedTerminalId(next[next.length - 1]!.id)
+          }
+        }
+        return next
+      })
+    },
+    [selectedTerminalId],
+  )
+
+  const setShellTitle = useCallback(
+    (id: string, title: string) => {
+      setTerminalTabs((current) =>
+        current.map((tab) => (tab.id === id ? { ...tab, title } : tab)),
+      )
+    },
+    [],
+  )
+
   return (
     <div className="flex h-full flex-col">
       <ViewTopBar
@@ -476,8 +616,10 @@ export function TaskWorkspace({
         tabs={
           <WorkspaceTabs
             tabs={tabs}
+            terminalTabs={terminalTabs}
             activeSurface={activeSurface}
             selectedFilePath={selectedFilePath}
+            selectedTerminalId={selectedTerminalId}
             splitFilePath={splitFilePath}
             onSelectFile={(path) => {
               setSelectedFilePath(path)
@@ -485,8 +627,14 @@ export function TaskWorkspace({
               if (splitFilePath) setSplitFilePath(path)
             }}
             onCloseFile={closeFile}
+            onSelectTerminal={(id) => {
+              setSelectedTerminalId(id)
+              setActiveSurface('terminal')
+            }}
+            onCloseTerminal={closeTerminalTab}
             onSplitFile={openInSplit}
             onDragStateChange={setDraggedTabPath}
+            onOpenTerminal={openTerminalTab}
           />
         }
         folderOpen={explorerOpen}
@@ -494,10 +642,7 @@ export function TaskWorkspace({
         onToggleFolder={onToggleExplorer}
         envInfoOpen={envInfoOpen}
         onToggleEnvInfo={project ? onToggleEnvInfo : undefined}
-        terminalOpen={terminalOpen}
-        onToggleTerminal={
-          project ? () => setTerminalOpen((open) => !open) : undefined
-        }
+        onOpenTerminal={project ? openTerminalTab : undefined}
         project={project}
         onProjectActionError={setError}
       />
@@ -650,6 +795,24 @@ export function TaskWorkspace({
           </div>
         )}
 
+        {activeSurface === 'terminal' && selectedTerminalId && project && (
+          <div
+            className="flex min-h-0 min-w-0 flex-1 flex-col"
+            data-editor-group="terminal"
+            data-terminal-active={selectedTerminalId}
+          >
+            {terminalTabs.map((term) => (
+              <TerminalSessionView
+                key={term.id}
+                instanceKey={term.id}
+                project={project}
+                active={term.id === selectedTerminalId}
+                onShellReady={setShellTitle}
+              />
+            ))}
+          </div>
+        )}
+
             {draggedTabPath && (
               <WorkspaceSplitDropZone
                 fileName={
@@ -667,7 +830,7 @@ export function TaskWorkspace({
             )}
           </div>
 
-          {project && terminalOpen && (
+          {project && terminalOpen && terminalTabs.length === 0 && (
             <TerminalPanel
               key={project.id}
               project={project}
@@ -693,9 +856,7 @@ export function TaskWorkspace({
             project={project}
             taskId={taskId}
             open={envInfoOpen}
-            onOpenTerminal={
-              project ? () => setTerminalOpen(true) : undefined
-            }
+            onOpenTerminal={project ? openTerminalTab : undefined}
           />
         )}
       </div>

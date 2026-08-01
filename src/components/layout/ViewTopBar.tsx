@@ -35,8 +35,7 @@ export function ViewTopBar({
   folderOpen,
   onToggleFolder,
   folderDisabled = !onToggleFolder,
-  terminalOpen,
-  onToggleTerminal,
+  onOpenTerminal,
   progressOpen,
   onToggleProgress,
   envInfoOpen,
@@ -55,9 +54,8 @@ export function ViewTopBar({
   folderOpen?: boolean
   onToggleFolder?: () => void
   folderDisabled?: boolean
-  /** Opens the integrated bottom terminal panel when available. */
-  terminalOpen?: boolean
-  onToggleTerminal?: () => void
+  /** Opens a new terminal tab (always creates a new one and focuses it). */
+  onOpenTerminal?: () => void
   /** Optional: when provided, the progress toggle button renders. */
   progressOpen?: boolean
   onToggleProgress?: () => void
@@ -153,19 +151,13 @@ export function ViewTopBar({
           </DropdownMenu>
         </div>
 
-        {onToggleTerminal && (
+        {onOpenTerminal && (
           <button
             type="button"
-            aria-label="Toggle terminal"
-            aria-pressed={terminalOpen}
-            title="Terminal (Ctrl+`)"
-            className={cn(
-              'inline-flex size-8 items-center justify-center rounded-md transition-colors',
-              terminalOpen
-                ? 'text-foreground bg-accent/60'
-                : 'text-muted-foreground hover:text-foreground hover:bg-accent/50',
-            )}
-            onClick={onToggleTerminal}
+            aria-label="Open new terminal tab"
+            title="New terminal tab"
+            className="text-muted-foreground hover:text-foreground hover:bg-accent/50 inline-flex size-8 items-center justify-center rounded-md transition-colors"
+            onClick={onOpenTerminal}
           >
             <SquareTerminal className="size-4" />
           </button>
