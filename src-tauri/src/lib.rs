@@ -119,6 +119,17 @@ pub fn run() {
             .map_err(|e| -> Box<dyn std::error::Error> { e.into() })?;
             app.manage(supervisor);
 
+            // Force the main window to fill the screen on startup. The
+            // tauri.conf.json "maximized: true" only takes effect the
+            // first time the window is created; if the user resized or
+            // un-maximized it in a previous session, those settings get
+            // remembered and the window comes up small. Maximize again
+            // on every boot so we never come up with the desktop visible
+            // around a tiny app.
+            if let Some(window) = app.get_webview_window("main") {
+                let _ = window.maximize();
+            }
+
             // Load the projects store from disk; failing here is
             // recoverable (empty list). We log + fall through with an
             // empty store so the app still boots; a corrupted config

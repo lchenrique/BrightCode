@@ -18,6 +18,11 @@
         "minWidth": 960,
         "minHeight": 600,
         "maximized": true,
+        "decorations": true,
+        "resizable": true,
+        "fullscreen": false,
+        "transparent": false,
+        "backgroundColor": "#0b0b0d",
         "additionalBrowserArgs": "--remote-debugging-port=9222 --disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection"
       }
     ],
