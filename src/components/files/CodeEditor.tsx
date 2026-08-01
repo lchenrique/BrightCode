@@ -70,6 +70,7 @@ export function CodeEditor({
       scrollBeyondLastLine: false,
       smoothScrolling: true,
       tabSize: 2,
+      wordWrap: document.documentElement.dataset.wordWrap === 'true' ? 'on' : 'off',
       readOnly: readOnlyRef.current,
       theme: document.documentElement.classList.contains('dark') ? 'vs-dark' : 'vs',
     })
@@ -86,6 +87,10 @@ export function CodeEditor({
       monaco.editor.setTheme(
         document.documentElement.classList.contains('dark') ? 'vs-dark' : 'vs',
       )
+      const wrap = document.documentElement.dataset.wordWrap === 'true' ? 'on' : 'off'
+      if (editor.getOption(monaco.editor.EditorOption.wordWrap) !== wrap) {
+        editor.updateOptions({ wordWrap: wrap })
+      }
     })
     themeObserver.observe(document.documentElement, {
       attributes: true,

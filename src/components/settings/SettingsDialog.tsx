@@ -301,8 +301,32 @@ function ThemeMockCard({
   )
 }
 
+const fontScales = [
+  { id: 'xs', label: 'XS' },
+  { id: 's', label: 'S' },
+  { id: 'm', label: 'M' },
+  { id: 'l', label: 'L' },
+  { id: 'xl', label: 'XL' },
+] as const
+
+const densities = [
+  { id: 'compact', label: 'Compact', hint: 'Tighter rows, more content on screen.' },
+  { id: 'comfortable', label: 'Comfortable', hint: 'Default spacing, easier to scan.' },
+] as const
+
 function AppearanceTab() {
-  const { colorMode, setColorMode, themePreset, setThemePreset } = useTheme()
+  const {
+    colorMode,
+    setColorMode,
+    themePreset,
+    setThemePreset,
+    fontScale,
+    setFontScale,
+    density,
+    setDensity,
+    editorWordWrap,
+    setEditorWordWrap,
+  } = useTheme()
 
   return (
     <div className="flex flex-col gap-6">
@@ -332,7 +356,92 @@ function AppearanceTab() {
         </div>
       </div>
 
-      {/* Section 2: Theme Presets & Styles */}
+      {/* Section 2: Text size (zoom of the whole UI) */}
+      <div className="flex flex-col gap-2.5">
+        <SectionLabel>Text size</SectionLabel>
+        <p className="text-muted-foreground text-[11.5px]">
+          Scales every panel, button and label in the app.
+        </p>
+        <div className="grid grid-cols-5 gap-2">
+          {fontScales.map(({ id, label }) => {
+            const selected = fontScale === id
+            return (
+              <button
+                key={id}
+                type="button"
+                onClick={() => setFontScale(id)}
+                aria-pressed={selected}
+                className={cn(
+                  'flex items-center justify-center rounded-lg border py-2.5 text-xs font-semibold transition-all cursor-pointer',
+                  selected
+                    ? 'border-primary bg-primary/10 text-primary'
+                    : 'border-border/60 hover:border-border text-muted-foreground hover:text-foreground',
+                )}
+              >
+                {label}
+              </button>
+            )
+          })}
+        </div>
+      </div>
+
+      {/* Section 3: UI density */}
+      <div className="flex flex-col gap-2.5">
+        <SectionLabel>UI density</SectionLabel>
+        <div className="grid grid-cols-2 gap-3">
+          {densities.map(({ id, label, hint }) => {
+            const selected = density === id
+            return (
+              <button
+                key={id}
+                type="button"
+                onClick={() => setDensity(id)}
+                aria-pressed={selected}
+                className={cn(
+                  'flex flex-col items-start gap-1 rounded-xl border px-3 py-2.5 text-left transition-all cursor-pointer',
+                  selected
+                    ? 'border-primary bg-primary/10'
+                    : 'border-border/60 hover:border-border',
+                )}
+              >
+                <span
+                  className={cn(
+                    'text-xs font-semibold',
+                    selected ? 'text-primary' : 'text-foreground/90',
+                  )}
+                >
+                  {label}
+                </span>
+                <span className="text-muted-foreground text-[11px] leading-tight">
+                  {hint}
+                </span>
+              </button>
+            )
+          })}
+        </div>
+      </div>
+
+      {/* Section 4: Editor — word wrap */}
+      <div className="flex flex-col gap-2.5">
+        <SectionLabel>Editor</SectionLabel>
+        <div className="border-border/60 flex items-center justify-between rounded-lg border px-3 py-2.5">
+          <div className="flex flex-col">
+            <span className="text-foreground/90 text-xs font-medium">
+              Word wrap in code editor
+            </span>
+            <span className="text-muted-foreground text-[11px]">
+              Long lines wrap instead of scrolling horizontally.
+            </span>
+          </div>
+          <Switch
+            checked={editorWordWrap}
+            onCheckedChange={setEditorWordWrap}
+            aria-label="Toggle word wrap in code editor"
+          />
+        </div>
+      </div>
+
+      {/* Section 5: Theme Presets & Styles */}
       <div className="flex flex-col gap-2.5">
         <SectionLabel>Theme Style & Palette</SectionLabel>
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
