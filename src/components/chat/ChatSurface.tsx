@@ -1474,7 +1474,9 @@ export function ChatSurface({
         </div>
       </div>
 
-      {/* Input pinned at bottom */}
+      {/* Input pinned at bottom of the chat — flex shrink-0 keeps it
+       * at the natural height; the messages area above takes the
+       * remaining space (flex-1 + overflow-y-auto). */}
       <div className="shrink-0 px-6 pt-2 pb-4">
         <div className="mx-auto max-w-3xl">
           <ChatInput
