@@ -63,9 +63,6 @@ export function useTheme() {
 
   useEffect(() => {
     const html = document.documentElement
-    // data-font-scale must live on the React root, not on <html>.
-    // Setting CSS zoom on <html> makes <body> grow past the viewport,
-    // leaving a black band at the bottom of the window.
     const rootEl = document.getElementById('root') ?? html
 
     // 1. Set data-theme for preset
@@ -84,8 +81,11 @@ export function useTheme() {
     html.classList.toggle('light', !isDark)
 
     // 3. Apply font scale + density + word wrap via data attributes.
-    //    index.css reads these and applies the actual CSS (zoom for size,
-    //    --row-density CSS var, and wordWrap toggles monaco option).
+    //    Font scale lives on #root so the CSS `transform: scale()` rule
+    //    applies. The width/height are inversely scaled so the layout box
+    //    shrinks in proportion — the visual scale grows, but the layout
+    //    box still fits the viewport, so nothing pinned to the bottom
+    //    (chat input, etc.) gets clipped.
     rootEl.setAttribute('data-font-scale', fontScale)
     html.setAttribute('data-density', density)
     html.setAttribute('data-word-wrap', String(editorWordWrap))

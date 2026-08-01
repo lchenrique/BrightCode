@@ -511,8 +511,17 @@
   * {
     @apply border-border outline-ring/50;
   }
+  html,
   body {
-    @apply bg-background text-foreground;
+    /* Hard-fallback to the same dark slate used by tauri.conf.json so any
+     * sliver between the WebView and the native window chrome (title bar,
+     * resize borders) blends in. Without this, the body shows bg-background
+     * (a slightly lighter slate) and a subtle but visible darker band
+     * appears at the bottom of the window. */
+    background: #0b0b0d;
+  }
+  body {
+    @apply text-foreground;
     letter-spacing: var(--tracking-normal);
   }
 }
@@ -740,26 +749,34 @@
 }
 
 
-/* -- User-controlled UI scale (Settings ? Appearance ? Text size) ----
- * Uses the CSS `zoom` property so every existing text-[Npx] and rem-based
- * rule scales proportionally without rewriting the whole stylesheet. Chrome
- * + WebView2 (Edge) + the Tauri shell on Windows all support `zoom`.
- */
-#root[data-font-scale='xs']   { zoom: 0.85; }
-#root[data-font-scale='s']    { zoom: 0.93; }
-#root[data-font-scale='m']    { zoom: 1; }
-#root[data-font-scale='l']    { zoom: 1.12; }
-#root[data-font-scale='xl']   { zoom: 1.25; }
-
-/* The zoom above scales the visual content of #root. With a zoom > 1,
- * the content becomes larger than the viewport, so html/body/#root
- * are clamped to the viewport height and each inner surface (sidebar
- * content, main) carries its own scroll. Without this, the React
- * container #root collapses to the natural size of its children,
- * leaving an empty dark band at the bottom of the window. */
-html,
-body,
+/* -- User-controlled UI scale (Settings → Appearance → Text size) ----
+ * Visual scale via `transform: scale()` on #root + an inverse width/height
+ * so the layout box shrinks in the same proportion that the rendering
+ * grows. That way:
+ *   - everything scales (text-[Npx], rem-based, icons, paddings — all of
+ *     it, not just rem-derived sizes like a bare `font-size` swap would)
+ *   - the layout box fits the viewport, so the chat input (and anything
+ *     else pinned to the bottom) never gets clipped by overflow: hidden
+ * `transform-origin: top left` keeps the scaled content anchored to the
+ * top-left corner instead of drifting toward the center. */
 #root {
+  transform-origin: top left;
+  width: 100%;
+  height: 100dvh;
+}
+#root[data-font-scale='xs'] { transform: scale(0.85); width: calc(100% / 0.85); height: calc(100dvh / 0.85); }
+#root[data-font-scale='s']  { transform: scale(0.93); width: calc(100% / 0.93); height: calc(100dvh / 0.93); }
+#root[data-font-scale='m']  { transform: scale(1); }
+#root[data-font-scale='l']  { transform: scale(1.12); width: calc(100% / 1.12); height: calc(100dvh / 1.12); }
+#root[data-font-scale='xl'] { transform: scale(1.25); width: calc(100% / 1.25); height: calc(100dvh / 1.25); }
+
+/* Clamp the document to the viewport so the body never grows past the
+ * window — without this, a scale > 1 would let <body> grow taller than
+ * 100dvh and the native Tauri chrome would show a black band at the
+ * bottom. Each scrollable surface (sidebar, chat, editor) carries its
+ * own overflow internally. */
+html,
+body {
   height: 100dvh;
   max-height: 100dvh;
   overflow: hidden;
