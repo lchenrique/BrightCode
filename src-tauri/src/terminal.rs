@@ -63,11 +63,19 @@ fn clamp_dimension(value: Option<u16>, fallback: u16, min: u16, max: u16) -> u16
 
 fn shell_config() -> (String, Vec<String>, &'static str) {
     if cfg!(target_os = "windows") {
-        return (
-            "powershell.exe".to_string(),
-            vec!["-NoLogo".to_string()],
-            "PowerShell",
-        );
+        // Use cmd.exe: PowerShell and the MINGW bash that ships with
+        // Git for Windows both try to negotiate the ConPTY-private
+        // Win32 Input Mode (`?9001`) and Focus Reporting (`?1004`)
+        // capabilities at startup, and when our renderer (xterm.js)
+        // doesn't acknowledge them they abort with
+        // STATUS_CONTROL_C_EXIT (0xC000013A) the moment they see the
+        // first byte of real input. cmd.exe is the most forgiving of
+        // the three. The toggle filter in
+        // `filter_pty_round_trip_modes` further silences the
+        // round-trip by stripping the `?9001` / `?1004` sequences
+        // from both directions; a future swap to bash or a pty-
+        // bypass mode is a one-line change here.
+        return ("cmd.exe".to_string(), Vec::new(), "Command Prompt");
     }
     let shell = std::env::var("SHELL").unwrap_or_else(|_| {
         if cfg!(target_os = "macos") {
@@ -91,6 +99,20 @@ fn terminal_env() -> HashMap<String, String> {
     env
 }
 
+/// Strip the Windows extended-length path prefix (`\\?\` or `//?/`) from
+/// a string. The prefix is meaningful to Win32 APIs but breaks ConPTY
+/// when passed as a cwd to powershell.exe.
+fn strip_unc_prefix(path: &str) -> String {
+    let mut s = path.to_string();
+    for prefix in ["\\\\?\\", "//?/"] {
+        if let Some(rest) = s.strip_prefix(prefix) {
+            s = rest.to_string();
+            break;
+        }
+    }
+    s
+}
+
 #[tauri::command]
 pub async fn terminal_create(
     app: AppHandle,
@@ -103,7 +125,15 @@ pub async fn terminal_create(
         .find_by_id(&project_id)
         .await
         .ok_or_else(|| "project not found".to_string())?;
-    let cwd = project.path.clone();
+    // Strip the Windows extended-length (\\?\) prefix before handing
+    // the path to the shell. The ConPTY-backed powershell that
+    // portable-pty spawns crashes with STATUS_ACCESS_VIOLATION
+    // (0xC0000005) when the cwd starts with `\\?\` — a known
+    // interaction between ConPTY and Win32 path normalization.
+    let cwd = strip_unc_prefix(&project.path);
+    if !std::path::Path::new(&cwd).is_dir() {
+        return Err(format!("project path is not a directory: {cwd}"));
+    }
 
     let cols = clamp_dimension(dimensions.as_ref().and_then(|d| d.cols), 80, 2, 500);
     let rows = clamp_dimension(dimensions.as_ref().and_then(|d| d.rows), 24, 1, 300);
@@ -139,7 +169,11 @@ pub async fn terminal_create(
     let master = pair.master;
     let killer: Box<dyn portable_pty::ChildKiller + Send> = killer;
 
-    // Reader thread emits terminal:data events.
+    // Reader thread emits terminal:data events. We also strip the
+    // ConPTY-private mode toggles (`?9001` / `?1004`) from the output
+    // so the client (xterm.js) never has to react to them, and the
+    // round-trip the shell uses to disable them can't reach the
+    // client and confuse it.
     {
         let session_id = session_id.clone();
         let app = app.clone();
@@ -154,7 +188,11 @@ pub async fn terminal_create(
                 match reader.read(&mut buf) {
                     Ok(0) => break,
                     Ok(n) => {
-                        let data = String::from_utf8_lossy(&buf[..n]).to_string();
+                        let cleaned = filter_pty_round_trip_modes(&buf[..n]);
+                        if cleaned.is_empty() {
+                            continue;
+                        }
+                        let data = String::from_utf8_lossy(&cleaned).to_string();
                         let _ = app.emit(
                             "terminal:data",
                             serde_json::json!({ "sessionId": session_id, "data": data }),
@@ -210,6 +248,55 @@ pub async fn terminal_create(
     })
 }
 
+/// Strip the ConPTY-private mode toggles for Win32 Input Mode (`?9001`)
+/// and Focus Reporting (`?1004`) from a stream of bytes that the
+/// renderer is about to feed back into the shell.
+///
+/// Why: ConPTY sends `ESC[?9001h ESC[?1004h` on every spawn as a "these
+/// capabilities are available" announcement. cmd.exe (and other Win32
+/// console applications) interpret those sequences as a *request from
+/// the client* to enable the modes. When the client (xterm.js) never
+/// acks, the shell does its own cleanup with
+/// `ESC[?9001l ESC[?1004l` and exits with STATUS_CONTROL_C_EXIT
+/// (0xC000013A) the moment it sees the very first real keystroke —
+/// which is what Carlos was seeing as "Process exited with code
+/// 3221225786" (= 0xC000013A in hex) on the first typed character.
+///
+/// The clean fix: pretend our client already acknowledged the modes
+/// (by *not* feeding those toggles back into the shell input), and
+/// filter the matching disable sequences from the shell output so
+/// xterm.js never has to react to them either.
+fn filter_pty_round_trip_modes(bytes: &[u8]) -> Vec<u8> {
+    const TOGGLE_SEQS: &[&[u8]] = &[
+        b"\x1b[?9001h",
+        b"\x1b[?9001l",
+        b"\x1b[?1004h",
+        b"\x1b[?1004l",
+        // Some clients also send them with the CSI ? prefix omitted.
+        b"\x1b[9001h",
+        b"\x1b[9001l",
+        b"\x1b[1004h",
+        b"\x1b[1004l",
+    ];
+    let mut out = Vec::with_capacity(bytes.len());
+    let mut i = 0;
+    while i < bytes.len() {
+        let mut matched = false;
+        for seq in TOGGLE_SEQS {
+            if bytes[i..].starts_with(seq) {
+                i += seq.len();
+                matched = true;
+                break;
+            }
+        }
+        if !matched {
+            out.push(bytes[i]);
+            i += 1;
+        }
+    }
+    out
+}
+
 #[tauri::command]
 pub async fn terminal_write(
     terminal_state: State<'_, TerminalState>,
@@ -226,8 +313,15 @@ pub async fn terminal_write(
         .take_writer()
         .map_err(|e| format!("take_writer: {e}"))?;
     use std::io::Write;
+    // Filter the round-trip ConPTY mode toggles so cmd.exe doesn't see
+    // its own ESC[?9001l / ESC[?1004l disable as a user-initiated
+    // request and bail with STATUS_CONTROL_C_EXIT.
+    let filtered = filter_pty_round_trip_modes(data.as_bytes());
+    if filtered.is_empty() {
+        return Ok(());
+    }
     writer
-        .write_all(data.as_bytes())
+        .write_all(&filtered)
         .map_err(|e| format!("write: {e}"))?;
     writer.flush().map_err(|e| format!("flush: {e}"))?;
     Ok(())

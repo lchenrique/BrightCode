@@ -179,13 +179,23 @@ export function TerminalSessionView({
   const terminalRef = useRef<Terminal | null>(null)
   const fitRef = useRef<FitAddon | null>(null)
   const sessionIdRef = useRef<string | null>(null)
+  // `mounted` distinguishes "the component is rendered but inactive"
+  // from "the component was unmounted by the parent". PTY is created
+  // lazily on first activation, but the cleanup that kills the PTY
+  // should only fire on real unmount, not on tab-switch.
+  const mountedRef = useRef(true)
 
+  // Mount: create the xterm Terminal and wire listeners. The PTY itself
+  // is created in the next effect, only when this tab is the active
+  // one — spawning one powershell per inactive tab was crashing the
+  // shell with exit codes like 1/2/3/5/6/7/8 every time the user opened
+  // a task with multiple terminal tabs.
   useEffect(() => {
     const container = containerRef.current
     const api = window.electronAPI?.terminal
     if (!container || !api) return
 
-    let disposed = false
+    mountedRef.current = true
     const terminal = new Terminal({
       cursorBlink: true,
       cursorStyle: 'bar',
@@ -257,27 +267,8 @@ export function TerminalSessionView({
       if (sessionId) api.resize(sessionId, cols, rows)
     })
 
-    void api
-      .create(project.id, { cols: terminal.cols, rows: terminal.rows })
-      .then((result) => {
-        if (!result.ok) {
-          if (!disposed) {
-            terminal.writeln(`\x1b[31mUnable to start terminal: ${result.error}\x1b[0m`)
-          }
-          return
-        }
-        if (disposed) {
-          void api.kill(result.sessionId)
-          return
-        }
-        sessionIdRef.current = result.sessionId
-        onShellReady(instanceKey, result.shell)
-        fit()
-        terminal.focus()
-      })
-
     return () => {
-      disposed = true
+      mountedRef.current = false
       const sessionId = sessionIdRef.current
       sessionIdRef.current = null
       if (sessionId) void api.kill(sessionId)
@@ -290,8 +281,48 @@ export function TerminalSessionView({
       terminalRef.current = null
       fitRef.current = null
     }
-  }, [instanceKey, onShellReady, project.id])
+  }, [instanceKey, project.id])
 
+  // Lazy PTY spawn: only create the actual shell process when this tab
+  // becomes the active one. If a PTY already exists (re-mount after a
+  // tab switch), we just fit+focus — no new process is spawned, so the
+  // shell survives tab-switching and keeps its scrollback/state.
+  useEffect(() => {
+    if (!active) return
+    if (sessionIdRef.current) return // already have a live session
+    const api = window.electronAPI?.terminal
+    const terminal = terminalRef.current
+    if (!api || !terminal) return
+
+    let cancelled = false
+    void api
+      .create(project.id, { cols: terminal.cols, rows: terminal.rows })
+      .then((result) => {
+        if (cancelled || !mountedRef.current) {
+          if (result.ok) void api.kill(result.sessionId)
+          return
+        }
+        if (!result.ok) {
+          terminal.writeln(`\x1b[31mUnable to start terminal: ${result.error}\x1b[0m`)
+          return
+        }
+        sessionIdRef.current = result.sessionId
+        onShellReady(instanceKey, result.shell)
+        try {
+          fitRef.current?.fit()
+        } catch {
+          // Ignore transient layout.
+        }
+        terminal.focus()
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [active, instanceKey, onShellReady, project.id])
+
+  // Re-fit + focus when the tab becomes active so the columns match the
+  // visible width (the xterm container was previously `invisible`).
   useEffect(() => {
     if (!active) return
     requestAnimationFrame(() => {
