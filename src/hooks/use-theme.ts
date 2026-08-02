@@ -111,7 +111,9 @@ export function useTheme() {
 
   useEffect(() => {
     const html = document.documentElement
-    const scaleEl = document.body
+    // Scale #root (not body) so Radix portals in document.body stay in normal
+    // document space and open at the correct position regardless of the scale.
+    const scaleEl = document.getElementById('root') ?? document.body
 
     // 1. Set data-theme for preset
     if (themePreset === 'default') {
@@ -128,8 +130,8 @@ export function useTheme() {
     html.classList.toggle('dark', isDark)
     html.classList.toggle('light', !isDark)
 
-    // 3. Scale body so both #root and Radix portals share the same visual
-    //    scale. Inverse dimensions keep the result viewport-sized.
+    // 3. Scale #root for the font-size preference. The layout box shrinks
+    //    inversely to keep the visual box viewport-sized.
     scaleEl.style.setProperty('--font-scale', String(fontScale))
     html.setAttribute('data-density', density)
     html.setAttribute('data-word-wrap', String(editorWordWrap))

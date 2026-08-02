@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, type KeyboardEvent } from 'react'
-import { RefreshCw, Brain, ChevronDown, ChevronLeft, ArrowUp, Sparkles, Search, Check, User, UserCheck, Square, X, Plus } from 'lucide-react'
+import { RefreshCw, Brain, ChevronDown, ChevronLeft, ArrowUp, Sparkles, Search, Check, User, UserCheck, Square, X, Plus, FileCode, Bot, PlusCircle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
   Popover,
@@ -9,6 +9,22 @@ import {
 import type { ModelInfo } from '@/lib/providers'
 import { providerRegistry } from '@/lib/providers'
 import { cn } from '@/lib/utils'
+
+// Slash command definitions
+interface SlashCommand {
+  id: string
+  label: string
+  description: string
+  icon: React.ComponentType<{ className?: string }>
+  insertText: string
+}
+
+const SLASH_COMMANDS: SlashCommand[] = [
+  { id: 'read-file', label: 'Read file', description: 'Read and display file contents', icon: FileCode, insertText: '/read ' },
+  { id: 'search', label: 'Search', description: 'Search for text in files', icon: Search, insertText: '/search ' },
+  { id: 'new-file', label: 'New file', description: 'Create a new file', icon: PlusCircle, insertText: '/new ' },
+  { id: 'agent', label: 'Delegate to agent', description: 'Ask another agent for help', icon: Bot, insertText: '/delegate ' },
+]
 
 export interface AttachedImage {
   /** Stable id used for the preview key. */
@@ -141,6 +157,7 @@ export function ChatInput({
   const level = thinkingLevelProp ?? (thinkingProp === false ? 'off' : internalThinkingLevel)
   const authMode = authModeProp ?? internalAuth
   const model = selectedModel ?? internalModel
+  const [authDropdownOpen, setAuthDropdownOpen] = useState(false)
 
   const setThinkingLevel = (v: ThinkingLevel) => {
     if (onThinkingLevelChange) onThinkingLevelChange(v)
@@ -156,6 +173,10 @@ export function ChatInput({
   const [value, setValue] = useState('')
   const [attachedImages, setAttachedImages] = useState<AttachedImage[]>([])
   const [imageError, setImageError] = useState<string | null>(null)
+  const [slashMenuOpen, setSlashMenuOpen] = useState(false)
+  const [slashMenuQuery, setSlashMenuQuery] = useState('')
+  const [mentionMenuOpen, setMentionMenuOpen] = useState(false)
+  const [mentionMenuQuery, setMentionMenuQuery] = useState('')
   const taRef = useRef<HTMLTextAreaElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
@@ -263,6 +284,53 @@ export function ChatInput({
     }
   }
 
+  // Handle slash commands and @ mentions in the textarea
+  const handleTextareaChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    const newValue = e.target.value
+    const cursorPos = e.target.selectionStart ?? 0
+    const textBeforeCursor = newValue.slice(0, cursorPos)
+
+    // Check for slash command trigger
+    const lastSlashIndex = textBeforeCursor.lastIndexOf('/')
+    const lastAtIndex = textBeforeCursor.lastIndexOf('@')
+    const lastNewlineIndex = textBeforeCursor.lastIndexOf('\n')
+
+    // Determine context: is the slash/at on the current line?
+    const slashOnCurrentLine = lastSlashIndex > lastNewlineIndex
+    const atOnCurrentLine = lastAtIndex > lastNewlineIndex
+
+    // Check if slash command is active (no space between slash and cursor)
+    if (slashOnCurrentLine && lastSlashIndex >= 0) {
+      const textAfterSlash = textBeforeCursor.slice(lastSlashIndex + 1)
+      const hasSpaceAfter = textAfterSlash.includes(' ')
+      if (!hasSpaceAfter && textAfterSlash.length > 0) {
+        setSlashMenuOpen(true)
+        setSlashMenuQuery(textAfterSlash)
+      } else if (hasSpaceAfter) {
+        setSlashMenuOpen(false)
+      }
+    } else {
+      setSlashMenuOpen(false)
+    }
+
+    // Check for @ mention trigger
+    if (atOnCurrentLine && lastAtIndex >= 0) {
+      const textAfterAt = textBeforeCursor.slice(lastAtIndex + 1)
+      const hasSpaceAfter = textAfterAt.includes(' ')
+      if (!hasSpaceAfter && textAfterAt.length > 0) {
+        setMentionMenuOpen(true)
+        setMentionMenuQuery(textAfterAt)
+      } else if (hasSpaceAfter) {
+        setMentionMenuOpen(false)
+      }
+    } else {
+      setMentionMenuOpen(false)
+    }
+
+    setValue(newValue)
+    onTypingChange?.(newValue.length > 0)
+  }
+
   return (
     <div
       data-chat-composer
@@ -306,13 +374,159 @@ export function ChatInput({
         </div>
       )}
 
+      {/* Slash command menu */}
+      {slashMenuOpen && (
+        <div className="mb-2 rounded-lg border border-border/60 bg-popover p-1.5 shadow-md">
+          <div className="text-muted-foreground/80 px-2 py-1 text-[10.5px] font-medium tracking-wide uppercase">
+            Commands
+          </div>
+          <div className="max-h-48 overflow-y-auto">
+            {SLASH_COMMANDS.filter(
+              (cmd) =>
+                cmd.label.toLowerCase().includes(slashMenuQuery.toLowerCase()) ||
+                cmd.id.includes(slashMenuQuery.toLowerCase()),
+            ).map((cmd) => {
+              const Icon = cmd.icon
+              return (
+                <button
+                  key={cmd.id}
+                  type="button"
+                  onClick={() => {
+                    // Insert the command at the current cursor position
+                    const cursorPos = taRef.current?.selectionStart ?? 0
+                    const textBefore = value.slice(0, cursorPos)
+                    const textAfter = value.slice(cursorPos)
+                    const lastSlash = textBefore.lastIndexOf('/')
+                    const newTextBefore = textBefore.slice(0, lastSlash) + cmd.insertText
+                    setValue(newTextBefore + textAfter)
+                    setSlashMenuOpen(false)
+                    setSlashMenuQuery('')
+                    // Move cursor to end of inserted text
+                    setTimeout(() => {
+                      if (taRef.current) {
+                        const pos = newTextBefore.length
+                        taRef.current.setSelectionRange(pos, pos)
+                        taRef.current.focus()
+                      }
+                    }, 0)
+                  }}
+                  className="flex w-full items-center gap-2.5 rounded-md px-2 py-1.5 text-left text-[12px] transition-colors hover:bg-accent"
+                >
+                  <Icon className="text-muted-foreground size-4 shrink-0" />
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate font-medium">{cmd.label}</div>
+                    <div className="text-muted-foreground truncate text-[10.5px]">{cmd.description}</div>
+                  </div>
+                </button>
+              )
+            })}
+            {SLASH_COMMANDS.filter(
+              (cmd) =>
+                cmd.label.toLowerCase().includes(slashMenuQuery.toLowerCase()) ||
+                cmd.id.includes(slashMenuQuery.toLowerCase()),
+            ).length === 0 && (
+              <div className="text-muted-foreground px-2 py-3 text-center text-[11px]">
+                No commands found
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* @ mention menu */}
+      {mentionMenuOpen && (
+        <div className="mb-2 rounded-lg border border-border/60 bg-popover p-1.5 shadow-md">
+          <div className="text-muted-foreground/80 px-2 py-1 text-[10.5px] font-medium tracking-wide uppercase">
+            Reference
+          </div>
+          <div className="max-h-48 overflow-y-auto">
+            {/* File placeholder items */}
+            {['src/index.tsx', 'src/App.tsx', 'src/components/Button.tsx']
+              .filter((f) => f.toLowerCase().includes(mentionMenuQuery.toLowerCase()))
+              .map((file) => (
+                <button
+                  key={file}
+                  type="button"
+                  onClick={() => {
+                    const cursorPos = taRef.current?.selectionStart ?? 0
+                    const textBefore = value.slice(0, cursorPos)
+                    const textAfter = value.slice(cursorPos)
+                    const lastAt = textBefore.lastIndexOf('@')
+                    const newTextBefore = textBefore.slice(0, lastAt) + `@${file} `
+                    setValue(newTextBefore + textAfter)
+                    setMentionMenuOpen(false)
+                    setMentionMenuQuery('')
+                    setTimeout(() => {
+                      if (taRef.current) {
+                        const pos = newTextBefore.length
+                        taRef.current.setSelectionRange(pos, pos)
+                        taRef.current.focus()
+                      }
+                    }, 0)
+                  }}
+                  className="flex w-full items-center gap-2.5 rounded-md px-2 py-1.5 text-left text-[12px] transition-colors hover:bg-accent"
+                >
+                  <FileCode className="text-muted-foreground size-4 shrink-0" />
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate font-medium">{file}</div>
+                    <div className="text-muted-foreground truncate text-[10.5px]">File</div>
+                  </div>
+                </button>
+              ))}
+            {/* Agent placeholder items */}
+            {['backend', 'frontend', 'test']
+              .filter((a) => a.toLowerCase().includes(mentionMenuQuery.toLowerCase()))
+              .map((agent) => (
+                <button
+                  key={agent}
+                  type="button"
+                  onClick={() => {
+                    const cursorPos = taRef.current?.selectionStart ?? 0
+                    const textBefore = value.slice(0, cursorPos)
+                    const textAfter = value.slice(cursorPos)
+                    const lastAt = textBefore.lastIndexOf('@')
+                    const newTextBefore = textBefore.slice(0, lastAt) + `@${agent} `
+                    setValue(newTextBefore + textAfter)
+                    setMentionMenuOpen(false)
+                    setMentionMenuQuery('')
+                    setTimeout(() => {
+                      if (taRef.current) {
+                        const pos = newTextBefore.length
+                        taRef.current.setSelectionRange(pos, pos)
+                        taRef.current.focus()
+                      }
+                    }, 0)
+                  }}
+                  className="flex w-full items-center gap-2.5 rounded-md px-2 py-1.5 text-left text-[12px] transition-colors hover:bg-accent"
+                >
+                  <Bot className="text-muted-foreground size-4 shrink-0" />
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate font-medium">{agent}</div>
+                    <div className="text-muted-foreground truncate text-[10.5px]">Agent</div>
+                  </div>
+                </button>
+              ))}
+            {(() => {
+              const filteredFiles = ['src/index.tsx', 'src/App.tsx', 'src/components/Button.tsx'].filter((f) =>
+                f.toLowerCase().includes(mentionMenuQuery.toLowerCase()),
+              )
+              const filteredAgents = ['backend', 'frontend', 'test'].filter((a) =>
+                a.toLowerCase().includes(mentionMenuQuery.toLowerCase()),
+              )
+              return filteredFiles.length === 0 && filteredAgents.length === 0 && mentionMenuQuery.length > 0 ? (
+                <div className="text-muted-foreground px-2 py-3 text-center text-[11px]">
+                  No results found
+                </div>
+              ) : null
+            })()}
+          </div>
+        </div>
+      )}
+
       <textarea
         ref={taRef}
         value={value}
-        onChange={(e) => {
-          setValue(e.target.value)
-          onTypingChange?.(e.target.value.length > 0)
-        }}
+        onChange={handleTextareaChange}
         onKeyDown={handleKey}
         rows={1}
         disabled={disabled}
@@ -346,17 +560,69 @@ export function ChatInput({
             </Button>
           )}
 
-          <button
-            type="button"
-            onClick={() => setAuthMode(authMode === 'full' ? 'read' : 'full')}
-            className="text-muted-foreground hover:text-foreground inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-md px-1.5 py-1 text-[12px] font-medium transition-colors"
-          >
-            <RefreshCw className="size-3.5 shrink-0" />
-            <span className="whitespace-nowrap">
-              {authMode === 'full' ? 'Full Authorization' : 'Read Only'}
-            </span>
-            <ChevronDown className="size-3.5 shrink-0 opacity-70" />
-          </button>
+          <Popover open={authDropdownOpen} onOpenChange={setAuthDropdownOpen}>
+            <PopoverTrigger asChild>
+              <button
+                type="button"
+                className="text-muted-foreground hover:text-foreground inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-md px-1.5 py-1 text-[12px] font-medium transition-colors"
+              >
+                <RefreshCw className="size-3.5 shrink-0" />
+                <span className="whitespace-nowrap">
+                  {authMode === 'full' ? 'Full Authorization' : 'Read Only'}
+                </span>
+                <ChevronDown className="size-3.5 shrink-0 opacity-70" />
+              </button>
+            </PopoverTrigger>
+            <PopoverContent align="start" side="top" sideOffset={4} className="w-48 p-1.5">
+              <div className="text-muted-foreground/80 px-2 py-1 text-[10.5px] font-medium tracking-wide uppercase">
+                Authorization
+              </div>
+              <div className="flex flex-col gap-0.5">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAuthMode('full')
+                    setAuthDropdownOpen(false)
+                  }}
+                  className={cn(
+                    'flex items-center gap-2 rounded-md px-2 py-1.5 text-left text-[12px] transition-colors',
+                    authMode === 'full'
+                      ? 'bg-accent text-foreground font-medium'
+                      : 'text-foreground/85 hover:bg-accent/60 hover:text-foreground',
+                  )}
+                >
+                  {authMode === 'full' ? <Check className="size-3.5 shrink-0" /> : <div className="size-3.5 shrink-0" />}
+                  <div>
+                    <div className="font-medium">Full Authorization</div>
+                    <div className="text-muted-foreground text-[10.5px] font-normal">
+                      Agent can read and write files, run commands
+                    </div>
+                  </div>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAuthMode('read')
+                    setAuthDropdownOpen(false)
+                  }}
+                  className={cn(
+                    'flex items-center gap-2 rounded-md px-2 py-1.5 text-left text-[12px] transition-colors',
+                    authMode === 'read'
+                      ? 'bg-accent text-foreground font-medium'
+                      : 'text-foreground/85 hover:bg-accent/60 hover:text-foreground',
+                  )}
+                >
+                  {authMode === 'read' ? <Check className="size-3.5 shrink-0" /> : <div className="size-3.5 shrink-0" />}
+                  <div>
+                    <div className="font-medium">Read Only</div>
+                    <div className="text-muted-foreground text-[10.5px] font-normal">
+                      Agent can read files but cannot modify anything
+                    </div>
+                  </div>
+                </button>
+              </div>
+            </PopoverContent>
+          </Popover>
         </div>
 
         <div className="flex flex-wrap items-center gap-1.5">

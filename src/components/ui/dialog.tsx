@@ -46,8 +46,8 @@ function DialogContent({
           className,
         )}
         style={{
-          width: 'calc(100% - 2rem / var(--font-scale))',
-          maxHeight: 'calc((100dvh - 2rem) / var(--font-scale))',
+          width: 'calc(100% - 2rem)',
+          maxHeight: 'calc(100dvh - 2rem)',
           ...style,
         }}
         {...props}

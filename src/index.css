@@ -763,15 +763,22 @@
 
 
 /* -- User-controlled UI scale (Settings → Appearance → Text size) ----
- * Scale <body>, not #root: Radix portals mount beside #root and must scale
- * with the rest of the UI. Inverse dimensions keep the visual box exactly
- * viewport-sized, so bottom-pinned inputs stay visible at every scale. */
-body {
-  transform-origin: top left;
+ * Scale <#root>, not <body>: Radix portals mount in document.body (outside
+ * #root) and use getBoundingClientRect() to position themselves. If body
+ * carries the scale transform, those coordinates are in visual space, but
+ * the fixed-position portal ends up misaligned. By scaling #root only, the
+ * app content scales visually while Radix portals stay in normal document
+ * space and open at the correct position. */
+#root {
   --font-scale: 1;
+  transform-origin: top left;
   transform: scale(var(--font-scale));
   width: calc(100% / var(--font-scale));
   height: calc(100dvh / var(--font-scale));
+  /* Compensate for the narrower layout box so #root still fills the
+   * viewport visually (otherwise a scale > 1 would leave empty space). */
+  margin-left: calc((100vw - (100% / var(--font-scale))) / 2);
+  margin-top: calc((100vh - (100% / var(--font-scale))) / 2);
 }
 
 /* Clamp the document to the viewport so the body never grows past the

@@ -389,6 +389,14 @@ export interface ChatSurfaceProps {
    * navigates to the peer's transcript.
    */
   onOpenAgentConversation?: (agentId: string) => void
+  /**
+   * When this ChatSurface is rendering an agent session, this is the
+   * taskId of the session the user is currently looking at. Peer
+   * conversations recorded by the orchestrator (Bright) are written
+   * to this taskId instead of the legacy `agent-<id>` slot, so the
+   * transcript lands in the session the user will reopen.
+   */
+  agentSessionTaskId?: string
 }
 
 export function ChatSurface({
@@ -402,6 +410,7 @@ export function ChatSurface({
   initialMessage,
   onInitialMessageSent,
   onOpenAgentConversation,
+  agentSessionTaskId,
 }: ChatSurfaceProps) {
   // Reactive model catalog from the registry
   const available = useAvailableModels()
@@ -1174,9 +1183,21 @@ export function ChatSurface({
           }
         }
 
-        const toolResults = await Promise.all(toolCalls.map(async (tc) => {
+        // Execute a single tool call and return the result. Handles both agent
+        // delegations and regular tools.
+        async function executeToolCall(
+          tc: {
+            id: string
+            name: string
+            input: unknown
+            providerItem?: Record<string, unknown>
+          },
+          signal: AbortSignal,
+        ): Promise<{
+          uiMessage: Message
+          wireMessage: ChatMessage
+        } | null> {
           const toolResultId = crypto.randomUUID()
-
           const isAgentDelegation = tc.name.startsWith('delegate_to_')
 
           if (isAgentDelegation) {
@@ -1229,9 +1250,7 @@ export function ChatSurface({
             let agentError = ''
 
             try {
-              for await (const progress of runAgent(task, {
-                signal: controller.signal,
-              })) {
+              for await (const progress of runAgent(task, { signal })) {
                 if (progress.type === 'error') {
                   agentError = progress.error ?? 'Agent error'
                   onToolResult?.(
@@ -1254,8 +1273,6 @@ export function ChatSurface({
                 }
               }
             } catch (err) {
-              // If the user clicked Stop, treat the partial output as a
-              // soft stop rather than an error.
               const isAbort =
                 (err instanceof DOMException && err.name === 'AbortError') ||
                 (err instanceof Error &&
@@ -1269,7 +1286,7 @@ export function ChatSurface({
               }
             }
 
-            const stopped = controller.signal.aborted
+            const stopped = signal.aborted
             const ok = !agentError && !stopped
             const summary = ok
               ? `Agent ${agent.name} replied — ${agentOutput.length} chars`
@@ -1279,11 +1296,7 @@ export function ChatSurface({
 
             if (!ok) failedTools += 1
 
-            // Persist the exchange inside the peer agent's own transcript
-            // so the user can open the agent from the sidebar and see the
-            // full conversation. The agent's chat is independent from the
-            // orchestrator's — exactly like a real 1:1 between two agents.
-            const peerTaskId = agentTaskId(agent)
+            const peerTaskId = agentSessionTaskId ?? agentTaskId(agent)
             try {
               const peerMessages: AgentTranscriptMessage[] = []
               peerMessages.push({
@@ -1348,6 +1361,7 @@ export function ChatSurface({
             }
           }
 
+          // Regular tool execution
           const exec = await window.electronAPI?.tools.execute(
             tc.name as Parameters<
               NonNullable<typeof window.electronAPI>['tools']['execute']
@@ -1401,17 +1415,41 @@ export function ChatSurface({
           return {
             uiMessage,
             wireMessage: {
-              role: 'tool',
+              role: 'tool' as const,
               toolCallId: tc.id,
               toolName: tc.name,
               content: execOk
                 ? serializeToolResult(result)
                 : `Error: ${error}`,
-            } satisfies ChatMessage,
+            },
           }
-        }))
-        // Commit a parallel tool batch as one state transition. Persistence
-        // and the next model request now observe the exact same transcript.
+        }
+
+        // Split agent delegations (must run sequentially to avoid resource contention)
+        // from regular tools (can run in parallel for performance).
+        const delegationCalls = toolCalls.filter((tc) => tc.name.startsWith('delegate_to_'))
+        const regularCalls = toolCalls.filter((tc) => !tc.name.startsWith('delegate_to_'))
+
+        const toolResults: Array<{
+          uiMessage: Message
+          wireMessage: ChatMessage
+        }> = []
+
+        // Run agent delegations sequentially to avoid concurrent agent state issues.
+        for (const tc of delegationCalls) {
+          const results = await executeToolCall(tc, controller.signal)
+          if (results) toolResults.push(results)
+        }
+
+        // Run regular tools in parallel for better performance.
+        const regularResults = await Promise.all(
+          regularCalls.map(async (tc) => executeToolCall(tc, controller.signal)),
+        )
+        for (const r of regularResults) {
+          if (r) toolResults.push(r)
+        }
+
+        // Commit results (outside the parallel tasks so changedPaths updates are safe).
         setMessages((prev) => [
           ...prev,
           ...toolResults.map((result) => result.uiMessage),

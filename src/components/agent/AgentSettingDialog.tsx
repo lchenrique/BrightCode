@@ -43,7 +43,7 @@ export function AgentSettingDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
         className="max-w-2xl overflow-hidden p-0"
-        style={{ height: 'min(420px, calc((100dvh - 2rem) / var(--font-scale)))' }}
+        style={{ height: 'min(420px, calc(100dvh - 2rem))' }}
       >
         <div className="flex h-full">
           {/* Internal left nav */}

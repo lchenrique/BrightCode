@@ -163,7 +163,7 @@ export function SearchDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
         className="top-[18%] flex max-w-2xl translate-y-0 flex-col overflow-hidden p-0"
-        style={{ height: 'calc(68vh / var(--font-scale))' }}
+        style={{ height: '68vh' }}
       >
         <div className="border-border/60 flex items-center gap-2 border-b px-3">
           <Search className="text-muted-foreground size-4 shrink-0" />
