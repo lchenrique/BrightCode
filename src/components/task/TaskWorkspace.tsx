@@ -18,7 +18,6 @@ import {
   type PointerEvent as ReactPointerEvent,
 } from 'react'
 import { ChatSurface } from '@/components/chat/ChatSurface'
-import { AgentRuntimeTranscript } from '@/components/chat/AgentRuntimeTranscript'
 import {
   ProjectFileIcon,
   ProjectFileTreePanel,
@@ -337,7 +336,6 @@ export function TaskWorkspace({
   envInfoOpen: boolean
   onToggleEnvInfo?: () => void
 }) {
-  const agentRuntimeV2 = true
   const [tabs, setTabs] = useState<OpenFile[]>([])
   const [terminalTabs, setTerminalTabs] = useState<TerminalTab[]>([])
   const [activeSurface, setActiveSurface] = useState<'chat' | 'file' | 'terminal'>(
@@ -651,18 +649,11 @@ export function TaskWorkspace({
               }}
               data-editor-group="chat"
             >
-              {agentRuntimeV2 ? (
-                <AgentRuntimeTranscript
-                  taskId={taskId}
-                  initialMessage={initialMessage}
-                />
-              ) : (
-                <ChatSurface
-                  taskId={taskId}
-                  project={project}
-                  initialMessage={initialMessage}
-                />
-              )}
+              <ChatSurface
+                taskId={taskId}
+                project={project}
+                initialMessage={initialMessage}
+              />
             </div>
 
             {splitFile && (

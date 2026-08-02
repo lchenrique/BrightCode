@@ -264,7 +264,10 @@ export function ChatInput({
   }
 
   return (
-    <div className="bg-card ring-border/40 w-full rounded-2xl px-4 py-3 shadow-2xl shadow-black/40 ring-1">
+    <div
+      data-chat-composer
+      className="bg-card ring-border/40 w-full rounded-2xl px-4 py-3 shadow-2xl shadow-black/40 ring-1"
+    >
       <input
         ref={fileInputRef}
         type="file"

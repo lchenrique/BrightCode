@@ -99,7 +99,10 @@ export function WelcomeScreen({
   )
 
   return (
-    <div className="relative flex h-full w-full flex-col overflow-hidden">
+    <div
+      data-welcome-screen
+      className="relative flex h-full w-full flex-col overflow-hidden"
+    >
       <GridBackground />
 
       {/* Top-left toggle button when sidebar is offcanvas / collapsed */}

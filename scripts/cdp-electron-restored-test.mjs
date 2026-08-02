@@ -130,14 +130,46 @@ try {
   assert(taskSelected, `Task fixture button not found: ${fixture.taskId}`)
   await wait(1000)
 
+  await evaluate(`(() => {
+    document.body.style.setProperty('--font-scale', '0.85')
+    Array.from(document.querySelectorAll('button')).find((button) => button.textContent?.trim() === 'New task')?.click()
+  })()`)
+  await wait(300)
+  const newTaskState = await evaluate(`(() => {
+    const welcome = document.querySelector('[data-welcome-screen]')
+    const composer = welcome?.querySelector('[data-chat-composer]')
+    const welcomeRect = welcome?.getBoundingClientRect()
+    const rootRect = document.getElementById('root')?.getBoundingClientRect()
+    const bodyRect = document.body.getBoundingClientRect()
+    return {
+      scale: getComputedStyle(document.body).getPropertyValue('--font-scale').trim(),
+      welcome: Boolean(welcome),
+      composer: Boolean(composer),
+      legacyRuntimeInput: Boolean(welcome?.querySelector('textarea[aria-label="Mensagem para o Agent Runtime V2"]')),
+      welcomeBottom: welcomeRect?.bottom ?? -1,
+      rootBottom: rootRect?.bottom ?? -1,
+      bodyBottom: bodyRect.bottom,
+      viewportHeight: innerHeight,
+    }
+  })()`)
+  assert(newTaskState.scale === '0.85' && newTaskState.welcome && newTaskState.composer && !newTaskState.legacyRuntimeInput, `New Task did not use the chat composer: ${JSON.stringify(newTaskState)}`)
+  assert(Math.abs(newTaskState.welcomeBottom - newTaskState.viewportHeight) < 2 && Math.abs(newTaskState.rootBottom - newTaskState.viewportHeight) < 2 && Math.abs(newTaskState.bodyBottom - newTaskState.viewportHeight) < 2, `New Task did not fill the viewport at 0.85x: ${JSON.stringify(newTaskState)}`)
+  const newTaskShot = await screenshot('electron-restored-new-task.png')
+
+  await evaluate(`(() => {
+    document.body.style.setProperty('--font-scale', localStorage.getItem('brightcode:font-scale') || '1')
+    document.querySelector('[data-task-id="' + ${JSON.stringify(fixture.taskId)} + '"]')?.click()
+  })()`)
+  await wait(1000)
+
   const baseState = await evaluate(`(() => {
     const header = document.querySelector('[data-sidebar="header"]')
     const official = Array.from(document.querySelectorAll('[data-avatar-kind="image"]'))
     const agentRows = Array.from(document.querySelectorAll('[data-avatar-kind="dicebear"]'))
     return {
       chatTab: Boolean(document.querySelector('[role="tab"][aria-label^="Conversation:"]')),
-      chatSurface: Boolean(document.querySelector('textarea[placeholder*="message"]'))
-        || (document.body?.innerText ?? '').includes('Agent Runtime V2'),
+      chatSurface: Boolean(document.querySelector('[data-editor-group="chat"] [data-chat-composer]')),
+      legacyRuntimeTranscript: Boolean(document.querySelector('[data-agent-runtime-v2="true"]')),
       filesButton: Boolean(document.querySelector('button[aria-label="Open project files"]')),
       terminalButton: Boolean(document.querySelector('button[aria-label="Open new terminal tab"]')),
       systemIcons: document.querySelectorAll('svg.lucide').length,
@@ -150,7 +182,7 @@ try {
     }
   })()`)
   console.log('Base state:', JSON.stringify(baseState))
-  assert(baseState.chatTab && baseState.chatSurface, `Chat surface missing: ${JSON.stringify(baseState)}`)
+  assert(baseState.chatTab && baseState.chatSurface && !baseState.legacyRuntimeTranscript, `Chat surface missing or legacy transcript active: ${JSON.stringify(baseState)}`)
   assert(baseState.filesButton && baseState.terminalButton, 'Files/terminal controls missing')
   assert(baseState.systemIcons >= 10, `Expected Lucide system icons, found ${baseState.systemIcons}`)
   assert(baseState.officialAvatars === 1 && baseState.officialInHeader, `Official avatar escaped header: ${JSON.stringify(baseState)}`)
@@ -252,7 +284,7 @@ try {
 
   await evaluate(`document.querySelector('[role="tab"][aria-label^="Conversation:"]')?.click()`)
   await wait(300)
-  assert(await evaluate(`Boolean(document.querySelector('textarea[placeholder*="message"]')?.offsetParent) || (document.body?.innerText ?? '').includes('Agent Runtime V2')`), 'Chat tab did not restore')
+  assert(await evaluate(`Boolean(document.querySelector('[data-editor-group="chat"] [data-chat-composer]')?.offsetParent)`), 'Chat tab did not restore')
   assert(await evaluate(`document.querySelectorAll('[data-terminal-instance]').length === 3`), 'Terminal sessions unmounted behind Chat')
   await evaluate(`document.querySelector('[data-terminal-tab="' + ${JSON.stringify(terminalBefore.activeTabId)} + '"]')?.click()`)
   await wait(300)
@@ -414,7 +446,7 @@ try {
   })()`)
 
   assert(exceptions.length === 0, `Runtime exceptions: ${exceptions.join('\n')}`)
-  console.log(JSON.stringify({ mode, pageUrl: page.url, baseState, filesState, filesVisible, terminalBefore, terminalAfter, scaleState, screenshots: [terminalShot, skillsShot, scaleShot], exceptions }, null, 2))
+  console.log(JSON.stringify({ mode, pageUrl: page.url, newTaskState, baseState, filesState, filesVisible, terminalBefore, terminalAfter, scaleState, screenshots: [newTaskShot, terminalShot, skillsShot, scaleShot], exceptions }, null, 2))
   console.log('Electron restored smoke passed.')
 } finally {
   try {
