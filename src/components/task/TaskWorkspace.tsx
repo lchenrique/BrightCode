@@ -26,10 +26,7 @@ import {
 } from '@/components/files/ProjectFileTreePanel'
 import { EnvironmentalInfoPanel } from '@/components/envinfo/EnvironmentalInfoPanel'
 import { ViewTopBar } from '@/components/layout/ViewTopBar'
-import {
-  TerminalPanel,
-  TerminalSessionView,
-} from '@/components/terminal/TerminalPanel'
+import { TerminalSessionView } from '@/components/terminal/TerminalPanel'
 import {
   consumePendingProjectFileOpen,
   notifyProjectFilesChanged,
@@ -71,9 +68,6 @@ const SPLIT_MIN_PERCENT = 25
 const SPLIT_MAX_PERCENT = 75
 const SPLIT_SIZE_STORAGE_KEY = 'brightcode:workspace-split-percent'
 const FILE_TAB_DRAG_TYPE = 'application/x-brightcode-file'
-const TERMINAL_HEIGHT_STORAGE_KEY = 'brightcode:terminal-panel-height'
-const TERMINAL_DEFAULT_HEIGHT = 260
-const TERMINAL_MIN_HEIGHT = 140
 
 function getExtension(path: string): string {
   const name = path.split('/').pop() ?? path
@@ -361,15 +355,6 @@ export function TaskWorkspace({
       ? clampSplitPercent(stored)
       : SPLIT_DEFAULT_PERCENT
   })
-  const [terminalOpen, setTerminalOpen] = useState(false)
-  const [terminalHeight, setTerminalHeight] = useState(() => {
-    const stored = Number.parseFloat(
-      window.localStorage.getItem(TERMINAL_HEIGHT_STORAGE_KEY) ?? '',
-    )
-    return Number.isFinite(stored)
-      ? Math.max(TERMINAL_MIN_HEIGHT, stored)
-      : TERMINAL_DEFAULT_HEIGHT
-  })
   const [loadingPath, setLoadingPath] = useState<string | null>(null)
   const [savingPath, setSavingPath] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -399,25 +384,6 @@ export function TaskWorkspace({
       String(splitPercent),
     )
   }, [splitPercent])
-
-  useEffect(() => {
-    window.localStorage.setItem(
-      TERMINAL_HEIGHT_STORAGE_KEY,
-      String(terminalHeight),
-    )
-  }, [terminalHeight])
-
-  useEffect(() => {
-    const toggleTerminal = (event: KeyboardEvent) => {
-      if (!(event.ctrlKey || event.metaKey) || event.code !== 'Backquote') {
-        return
-      }
-      event.preventDefault()
-      if (project) setTerminalOpen((open) => !open)
-    }
-    window.addEventListener('keydown', toggleTerminal)
-    return () => window.removeEventListener('keydown', toggleTerminal)
-  }, [project])
 
   useEffect(() => {
     if (!saveNotice) return
@@ -581,6 +547,16 @@ export function TaskWorkspace({
     setSelectedTerminalId(id)
     setActiveSurface('terminal')
   }, [project, terminalTabs.length])
+
+  useEffect(() => {
+    const openTerminal = (event: KeyboardEvent) => {
+      if (!(event.ctrlKey || event.metaKey) || event.code !== 'Backquote') return
+      event.preventDefault()
+      openTerminalTab()
+    }
+    window.addEventListener('keydown', openTerminal)
+    return () => window.removeEventListener('keydown', openTerminal)
+  }, [openTerminalTab])
 
   const closeTerminalTab = useCallback(
     (id: string) => {
@@ -806,7 +782,7 @@ export function TaskWorkspace({
 
         {activeSurface === 'terminal' && selectedTerminalId && project && (
           <div
-            className="flex min-h-0 min-w-0 flex-1 flex-col"
+            className="relative flex min-h-0 min-w-0 flex-1 flex-col"
             data-editor-group="terminal"
             data-terminal-active={selectedTerminalId}
           >
@@ -839,15 +815,6 @@ export function TaskWorkspace({
             )}
           </div>
 
-          {project && terminalOpen && terminalTabs.length === 0 && (
-            <TerminalPanel
-              key={project.id}
-              project={project}
-              height={terminalHeight}
-              onHeightChange={setTerminalHeight}
-              onRequestClose={() => setTerminalOpen(false)}
-            />
-          )}
         </section>
 
         {project && (
