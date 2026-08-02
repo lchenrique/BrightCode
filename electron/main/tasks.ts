@@ -5,8 +5,11 @@
 import { BrowserWindow, ipcMain } from 'electron'
 import Store from 'electron-store'
 import { IPC } from '../shared/ipc-channels'
+import { electronStoreCwd } from './configure-user-data'
 
-const StoreCtor = (Store as unknown as { default?: typeof Store }).default ?? Store
+const StoreCtor = electronStoreCwd
+  ? Store
+  : ((Store as unknown as { default?: typeof Store }).default ?? Store)
 
 export type Task = {
   id: string
@@ -25,6 +28,7 @@ type StoredTasksState = {
 
 const tasksStore = new StoreCtor<StoredTasksState>({
   name: 'tasks',
+  cwd: electronStoreCwd,
   defaults: { tasks: [], messagesByTaskId: {} },
 })
 

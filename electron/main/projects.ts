@@ -18,9 +18,11 @@ import { randomUUID } from 'node:crypto'
 import { BrowserWindow, ipcMain } from 'electron'
 import Store from 'electron-store'
 import { IPC } from '../shared/ipc-channels'
+import { electronStoreCwd } from './configure-user-data'
 
-// electron-store is CJS in v8; this interop makes the default import work.
-const StoreCtor = (Store as unknown as { default?: typeof Store }).default ?? Store
+const StoreCtor = electronStoreCwd
+  ? Store
+  : ((Store as unknown as { default?: typeof Store }).default ?? Store)
 
 export type Project = {
   id: string
@@ -39,6 +41,7 @@ type StoredProjectsState = {
 
 const projectsStore = new StoreCtor<StoredProjectsState>({
   name: 'projects',
+  cwd: electronStoreCwd,
   defaults: { projects: [], activeProjectId: null },
   // TODO(security): add `encryptionKey` once we have a passphrase flow.
 })

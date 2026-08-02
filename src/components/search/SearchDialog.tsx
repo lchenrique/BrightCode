@@ -161,7 +161,10 @@ export function SearchDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="top-[18%] max-h-[68vh] max-w-2xl translate-y-0 overflow-hidden p-0">
+      <DialogContent
+        className="top-[18%] flex max-w-2xl translate-y-0 flex-col overflow-hidden p-0"
+        style={{ height: 'calc(68vh / var(--font-scale))' }}
+      >
         <div className="border-border/60 flex items-center gap-2 border-b px-3">
           <Search className="text-muted-foreground size-4 shrink-0" />
           <Input
@@ -180,7 +183,7 @@ export function SearchDialog({
 
         <DialogTitle className="sr-only">Search BrightCode</DialogTitle>
 
-        <div className="max-h-[calc(68vh-45px)] overflow-y-auto p-1.5">
+        <div className="min-h-0 flex-1 overflow-y-auto p-1.5">
           {results.length === 0 ? (
             <div className="text-muted-foreground flex h-32 items-center justify-center text-[12px]">
               {loadingFiles ? 'Indexing project files…' : 'No results found.'}

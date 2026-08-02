@@ -750,18 +750,10 @@
 
 
 /* -- User-controlled UI scale (Settings → Appearance → Text size) ----
- * Visual scale via `transform: scale()` on #root + an inverse width/height
- * so the layout box shrinks in the same proportion that the rendering
- * grows. The scale is a continuous number (0.85 → 2.0) read from the
- * `--font-scale` CSS custom property that use-theme writes to #root.
- * That way:
- *   - everything scales (text-[Npx], rem-based, icons, paddings — all of
- *     it, not just rem-derived sizes like a bare `font-size` swap would)
- *   - the layout box always fits the viewport, so the chat input (and
- *     anything else pinned to the bottom) never gets clipped
- * `transform-origin: top left` keeps the scaled content anchored to the
- * top-left corner instead of drifting toward the center. */
-#root {
+ * Scale <body>, not #root: Radix portals mount beside #root and must scale
+ * with the rest of the UI. Inverse dimensions keep the visual box exactly
+ * viewport-sized, so bottom-pinned inputs stay visible at every scale. */
+body {
   transform-origin: top left;
   --font-scale: 1;
   transform: scale(var(--font-scale));
@@ -774,10 +766,13 @@
  * 100dvh and the native Tauri chrome would show a black band at the
  * bottom. Each scrollable surface (sidebar, chat, editor) carries its
  * own overflow internally. */
-html,
-body {
+html {
   height: 100dvh;
   max-height: 100dvh;
+  overflow: hidden;
+}
+
+body {
   overflow: hidden;
 }
 

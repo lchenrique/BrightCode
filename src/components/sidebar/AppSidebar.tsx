@@ -53,6 +53,7 @@ import { useTasksByProject } from '@/hooks/use-tasks'
 import { useTaskActivity } from '@/hooks/use-task-activity'
 import { AddProjectDialog } from '@/components/projects/AddProjectDialog'
 import { agentStore, type AgentDefinition } from '@/lib/agents'
+import { AgentAvatar } from '@/components/ui/agent-avatar'
 import { cn } from '@/lib/utils'
 
 const topNav = [
@@ -98,7 +99,7 @@ function useAgents(): Agent[] {
     const prev = cacheRef.current
     if (
       prev.length === next.length &&
-      prev.every((p, i) => p.id === next[i].id)
+      prev.every((p, i) => p.id === next[i].id && p.name === next[i].name && p.avatarSeed === next[i].avatarSeed)
     ) {
       return prev
     }
@@ -145,8 +146,13 @@ export function AppSidebar({
   return (
     <Sidebar variant="inset" collapsible="offcanvas" className="border-r-0">
       <SidebarHeader className="p-3">
-        <div className="flex items-center">
+        <div className="flex items-center justify-between">
           <SidebarTrigger className="text-muted-foreground hover:text-foreground size-8" />
+          <AgentAvatar
+            seed="brightcode"
+            size={24}
+            imageSrc={`${import.meta.env.BASE_URL}agent-avatar.png`}
+          />
         </div>
         <SidebarTopNav
           items={topNav}
@@ -455,6 +461,7 @@ function TaskRow({
         <SidebarMenuButton
           size="sm"
           isActive={active}
+          data-task-id={taskId}
           className="text-foreground/75 hover:text-foreground data-[active=true]:text-foreground h-7 px-2 text-[12.5px]"
           onClick={onClick}
         >
@@ -562,7 +569,6 @@ function AgentRow({
           <TeamAvatar
             seed={agent.avatarSeed}
             color={agent.color}
-            imageSrc="/agent-avatar.png"
           />
           <span className="text-[13px]">{agent.name}</span>
         </SidebarMenuButton>

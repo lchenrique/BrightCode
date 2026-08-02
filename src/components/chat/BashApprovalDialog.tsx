@@ -40,14 +40,18 @@ export function BashApprovalDialog() {
   useEffect(() => {
     const api = window.electronAPI
     if (!api?.tools?.onBashApprovalRequest) return
-    return api.tools.onBashApprovalRequest((req) => {
-      setPending({
-        approvalId: req.approvalId,
-        command: req.command,
-        workdir: req.workdir,
-        timeoutMs: req.timeoutMs,
-      })
+    let disposed = false
+    const apply = (req: PendingApproval | null) => {
+      if (!disposed) setPending(req)
+    }
+    const removeListener = api.tools.onBashApprovalRequest(apply)
+    void api.tools.getPendingBashApproval().then((req) => {
+      if (req && !disposed) setPending((current) => current ?? req)
     })
+    return () => {
+      disposed = true
+      removeListener()
+    }
   }, [])
 
   const respond = useCallback(
@@ -59,8 +63,7 @@ export function BashApprovalDialog() {
       setPending(null) // optimistic clear — now `pending` is null for any racing call
       window.electronAPI.tools.respondToBashApproval(current.approvalId, approved)
     },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [], // intentionally depend on nothing — always reads the *current* `pending` from closure
+    [pending],
   )
 
   // Esc → deny. Enter → approve (only when the dialog is open).

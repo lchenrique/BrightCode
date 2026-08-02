@@ -46,7 +46,7 @@ export default defineConfig({
           build: {
             outDir: 'out/main',
             rollupOptions: {
-              external: ['electron-store', 'keytar', 'node-pty'],
+              external: ['@openai/agents', 'electron-store', 'keytar', 'node-pty'],
             },
           },
         },
@@ -80,7 +80,11 @@ export default defineConfig({
     },
   },
   server: isElectron
-    ? { port: 5180, strictPort: true }
+    ? {
+        port: 5180,
+        strictPort: true,
+        watch: { ignored: ['**/.mavis-runtime/**'] },
+      }
     : undefined,
   // Avoid `optimizeDeps` from pre-bundling the main process deps.
   optimizeDeps: {

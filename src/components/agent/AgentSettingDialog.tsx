@@ -41,8 +41,11 @@ export function AgentSettingDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl overflow-hidden p-0">
-        <div className="flex h-[420px]">
+      <DialogContent
+        className="max-w-2xl overflow-hidden p-0"
+        style={{ height: 'min(420px, calc((100dvh - 2rem) / var(--font-scale)))' }}
+      >
+        <div className="flex h-full">
           {/* Internal left nav */}
           <nav className="border-border/60 flex w-40 shrink-0 flex-col border-r px-2 py-4">
             <span className="text-muted-foreground/70 px-2 pb-2 text-[11px] font-normal tracking-wide uppercase">

@@ -174,6 +174,9 @@ const electronBackend = (() => {
       for (const l of listeners) l()
     })
   })
+  void ensureHydrated().then(() => {
+    for (const l of listeners) l()
+  })
 
   return {
     async ensureHydrated(): Promise<void> {

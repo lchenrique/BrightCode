@@ -97,6 +97,8 @@ export function AgentAvatar({
           className,
         )}
         style={{ width: size, height: size }}
+        data-avatar-kind="image"
+        data-avatar-seed={seed}
         aria-hidden
       >
         <img
@@ -118,6 +120,8 @@ export function AgentAvatar({
         className,
       )}
       style={{ width: size, height: size }}
+      data-avatar-kind="dicebear"
+      data-avatar-seed={seed}
       aria-hidden
       dangerouslySetInnerHTML={{ __html: svg }}
     />

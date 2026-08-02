@@ -501,12 +501,15 @@ const tools = {
    * to unblock the tool call.
    */
   onBashApprovalRequest(
-    handler: (req: BashApprovalRequest) => void,
+    handler: (req: BashApprovalRequest | null) => void,
   ): () => void {
-    const wrapped = (_event: unknown, payload: BashApprovalRequest) =>
+    const wrapped = (_event: unknown, payload: BashApprovalRequest | null) =>
       handler(payload)
     ipcRenderer.on(IPC.TOOL_BASH_APPROVAL_REQUEST, wrapped)
     return () => ipcRenderer.off(IPC.TOOL_BASH_APPROVAL_REQUEST, wrapped)
+  },
+  getPendingBashApproval(): Promise<BashApprovalRequest | null> {
+    return ipcRenderer.invoke(IPC.TOOL_BASH_APPROVAL_GET_PENDING)
   },
   respondToBashApproval(approvalId: string, approved: boolean): void {
     ipcRenderer.send(IPC.TOOL_BASH_APPROVAL_RESPOND, { approvalId, approved })

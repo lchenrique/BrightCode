@@ -122,6 +122,7 @@ export const IPC = {
    * caller's Promise when the response arrives.
    */
   TOOL_BASH_APPROVAL_REQUEST: 'tool:bash-approval-request',
+  TOOL_BASH_APPROVAL_GET_PENDING: 'tool:bash-approval-get-pending',
   TOOL_BASH_APPROVAL_RESPOND: 'tool:bash-approval-respond',
 
   /**

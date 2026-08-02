@@ -87,6 +87,7 @@ export function TerminalSessionView({
       terminal.writeln(
         `\r\n\x1b[90m[Process exited with code ${event.exitCode}]\x1b[0m`,
       )
+      delete container.dataset.terminalSessionId
       sessionIdRef.current = null
     })
     const inputDisposable = terminal.onData((data) => {
@@ -114,6 +115,7 @@ export function TerminalSessionView({
           return
         }
         sessionIdRef.current = result.sessionId
+        container.dataset.terminalSessionId = result.sessionId
         onShellReady(instanceKey, result.shell)
         fit()
         terminal.focus()

@@ -10,5 +10,15 @@ module.exports = async function afterPack(context) {
   );
   const iconPath = path.join(context.packager.projectDir, "build", "icon.ico");
 
-  await rcedit(executablePath, { icon: iconPath });
+  await rcedit(executablePath, {
+    icon: iconPath,
+    'file-version': context.packager.appInfo.version,
+    'product-version': context.packager.appInfo.version,
+    'version-string': {
+      ProductName: context.packager.appInfo.productName,
+      FileDescription: context.packager.appInfo.description,
+      InternalName: context.packager.appInfo.productFilename,
+      OriginalFilename: `${context.packager.appInfo.productFilename}.exe`,
+    },
+  });
 };

@@ -553,7 +553,10 @@ export function SettingsDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="h-[70vh] max-w-3xl overflow-hidden p-0">
+      <DialogContent
+        className="max-w-3xl overflow-hidden p-0"
+        style={{ height: 'calc(70vh / var(--font-scale))' }}
+      >
         <div className="flex h-full">
           {/* Left nav */}
           <nav className="border-border/60 flex w-48 shrink-0 flex-col gap-0.5 border-r px-2 py-4">

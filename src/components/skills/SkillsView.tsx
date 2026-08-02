@@ -2,15 +2,10 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   Sparkles,
   Search,
-  Folder,
   FileText,
   RefreshCw,
   ChevronRight,
   X,
-  Bot,
-  Terminal,
-  Cpu,
-  Boxes,
   Check,
   LoaderCircle,
   Save,
@@ -24,13 +19,14 @@ import {
   type DocumentViewMode,
 } from '@/components/files/DocumentDualEditor'
 import { useActiveProject } from '@/hooks/use-projects'
+import { getSkillSourceStyle } from './skill-source-style'
 import { cn } from '@/lib/utils'
 
 export interface DiscoveredSkill {
   id: string
   name: string
   description: string
-  source: 'codex' | 'agents' | 'gemini' | 'opencode' | 'project' | 'user'
+  source: string
   sourceLabel: string
   folderPath: string
   skillFilePath: string
@@ -45,45 +41,6 @@ const SKILLS_DRAWER_WIDTH_KEY = 'brightcode:skills-drawer-width'
 const SKILLS_DRAWER_DEFAULT_WIDTH = 560
 const SKILLS_DRAWER_MIN_WIDTH = 420
 const SKILLS_DRAWER_MAX_WIDTH = 960
-
-const SOURCE_COLORS: Record<
-  DiscoveredSkill['source'],
-  { badge: string; text: string; icon: typeof Sparkles }
-> = {
-  codex: {
-    badge: 'bg-amber-500/10 text-amber-500 border-amber-500/30',
-    text: 'text-amber-500',
-    icon: Terminal,
-  },
-  agents: {
-    badge: 'bg-purple-500/10 text-purple-400 border-purple-500/30',
-    text: 'text-purple-400',
-    icon: Bot,
-  },
-  gemini: {
-    badge: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30',
-    text: 'text-emerald-400',
-    icon: Cpu,
-  },
-  opencode: {
-    badge: 'bg-cyan-500/10 text-cyan-400 border-cyan-500/30',
-    text: 'text-cyan-400',
-    icon: Boxes,
-  },
-  project: {
-    badge: 'bg-indigo-500/10 text-indigo-400 border-indigo-500/30',
-    text: 'text-indigo-400',
-    icon: Folder,
-  },
-  user: {
-    badge: 'bg-rose-500/10 text-rose-400 border-rose-500/30',
-    text: 'text-rose-400',
-    icon: Sparkles,
-  },
-}
-
-/** Fallback for skill sources the UI does not know yet — degrades instead of crashing. */
-const FALLBACK_STYLE = SOURCE_COLORS.agents
 
 export function SkillsView() {
   const activeProject = useActiveProject()
@@ -264,7 +221,10 @@ export function SkillsView() {
       user: 0,
     }
     for (const s of skills) {
-      counts[s.source] = (counts[s.source] || 0) + 1
+      if (s.source in counts && s.source !== 'all') {
+        const source = s.source as Exclude<SourceFilter, 'all'>
+        counts[source] += 1
+      }
     }
     return counts
   }, [skills])
@@ -379,7 +339,7 @@ export function SkillsView() {
             ) : (
               <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2 lg:grid-cols-3">
                 {filteredSkills.map((s) => {
-                  const style = SOURCE_COLORS[s.source] ?? FALLBACK_STYLE
+                  const style = getSkillSourceStyle(s.source)
                   const Icon = style.icon
                   const isSelected = selectedSkill?.id === s.id
 
@@ -466,7 +426,7 @@ export function SkillsView() {
                     <span
                       className={cn(
                         'hidden shrink-0 rounded-full border px-1.5 py-px text-[9px] font-medium xl:inline-flex',
-                        (SOURCE_COLORS[selectedSkill.source] ?? FALLBACK_STYLE).badge,
+                        getSkillSourceStyle(selectedSkill.source).badge,
                       )}
                     >
                       {selectedSkill.sourceLabel}

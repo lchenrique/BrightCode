@@ -25,9 +25,10 @@
  */
 
 import { promises as fsp, realpathSync } from 'node:fs'
-import { spawn } from 'node:child_process'
+import { spawn, type ChildProcess } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
 import path from 'node:path'
+import { StringDecoder } from 'node:string_decoder'
 import { BrowserWindow, ipcMain } from 'electron'
 import { IPC } from '../shared/ipc-channels'
 import { getActiveProject } from './projects'
@@ -416,9 +417,16 @@ function globToRegex(pattern: string): RegExp {
  *   requestId is queued so the renderer can show both sequentially.
  * - `pendingBashApprovals` is the source of truth; renderer state is derived.
  */
+type BashApprovalRequest = {
+  approvalId: string
+  command: string
+  workdir: string
+  timeoutMs: number
+}
+
 const pendingBashApprovals = new Map<
   string,
-  { resolve: (approved: boolean) => void; timer: NodeJS.Timeout }
+  BashApprovalRequest & { resolve: (approved: boolean) => void; timer: NodeJS.Timeout }
 >()
 
 /**
@@ -434,6 +442,13 @@ const BASH_OUTPUT_BYTE_LIMIT = 200_000
 
 export function registerToolsIpc(): void {
   ipcMain.handle(IPC.TOOL_EXECUTE, (_e, req: ToolExecuteRequest) => executeTool(req))
+  ipcMain.handle(IPC.TOOL_BASH_APPROVAL_GET_PENDING, (): BashApprovalRequest | null => {
+    if (!activeApprovalId) return null
+    const pending = pendingBashApprovals.get(activeApprovalId)
+    if (!pending) return null
+    const { approvalId, command, workdir, timeoutMs } = pending
+    return { approvalId, command, workdir, timeoutMs }
+  })
 
   ipcMain.on(
     IPC.TOOL_BASH_APPROVAL_RESPOND,
@@ -484,18 +499,24 @@ function requestBashApproval(
       return
     }
 
+    const request = { approvalId, command, workdir, timeoutMs }
     const timer = setTimeout(() => {
       if (pendingBashApprovals.has(approvalId)) {
         pendingBashApprovals.delete(approvalId)
+        const queuedIndex = queuedBashApprovals.findIndex((item) => item.approvalId === approvalId)
+        if (queuedIndex >= 0) queuedBashApprovals.splice(queuedIndex, 1)
         if (activeApprovalId === approvalId) {
           activeApprovalId = null
-          sendNextQueuedApproval(window)
+          if (!window.isDestroyed()) {
+            window.webContents.send(IPC.TOOL_BASH_APPROVAL_REQUEST, null)
+            sendNextQueuedApproval(window)
+          }
         }
         resolve(false)
       }
     }, BASH_APPROVAL_TIMEOUT_MS)
 
-    pendingBashApprovals.set(approvalId, { resolve, timer })
+    pendingBashApprovals.set(approvalId, { ...request, resolve, timer })
 
     // If another bash is already awaiting approval, queue this one instead
     // of sending a second IPC request (which would get silently dropped by
@@ -516,22 +537,40 @@ function requestBashApproval(
 }
 
 /** Queue for bash approvals that arrive while another is already pending. */
-const queuedBashApprovals: Array<{
-  approvalId: string
-  command: string
-  workdir: string
-  timeoutMs: number
-}> = []
+const queuedBashApprovals: BashApprovalRequest[] = []
 
 function sendNextQueuedApproval(window: BrowserWindow): void {
-  const next = queuedBashApprovals.shift()
+  let next = queuedBashApprovals.shift()
+  while (next && !pendingBashApprovals.has(next.approvalId)) {
+    next = queuedBashApprovals.shift()
+  }
   if (!next) return
   activeApprovalId = next.approvalId
-  window.webContents.send(IPC.TOOL_BASH_APPROVAL_REQUEST, {
-    approvalId: next.approvalId,
-    command: next.command,
-    workdir: next.workdir,
-    timeoutMs: next.timeoutMs,
+  window.webContents.send(IPC.TOOL_BASH_APPROVAL_REQUEST, next)
+}
+
+async function killProcessTree(child: ChildProcess): Promise<void> {
+  if (!child.pid) return
+  if (process.platform !== 'win32') {
+    try {
+      process.kill(-child.pid, 'SIGKILL')
+    } catch {
+      child.kill('SIGKILL')
+    }
+    return
+  }
+
+  await new Promise<void>((resolve) => {
+    const killer = spawn('taskkill.exe', ['/pid', String(child.pid), '/t', '/f'], {
+      stdio: 'ignore',
+      windowsHide: true,
+      shell: false,
+    })
+    killer.once('error', () => {
+      child.kill('SIGKILL')
+      resolve()
+    })
+    killer.once('close', () => resolve())
   })
 }
 
@@ -577,15 +616,20 @@ async function runBash(
       cwd: workdir,
       shell: true,
       windowsHide: true,
+      detached: process.platform !== 'win32',
       env: { ...process.env, BRIGHTCODE_TOOL: 'bash' },
     })
 
     let stdout = ''
     let stderr = ''
+    const stdoutDecoder = new StringDecoder('utf8')
+    const stderrDecoder = new StringDecoder('utf8')
     let stdoutBytes = 0
     let stderrBytes = 0
-    let truncated = false
+    let stdoutTruncated = false
+    let stderrTruncated = false
     let settled = false
+    let timedOut = false
 
     const finish = (payload: ToolResult<{
       stdout: string
@@ -600,32 +644,30 @@ async function runBash(
     }
 
     const killTimer = setTimeout(() => {
-      try {
-        child.kill('SIGKILL')
-      } catch {
-        // ignore
-      }
-      finish({
-        ok: false,
-        error: `Command exceeded timeout (${effectiveTimeout}ms) and was killed.`,
+      timedOut = true
+      void killProcessTree(child).finally(() => {
+        finish({
+          ok: false,
+          error: `Command exceeded timeout (${effectiveTimeout}ms) and was killed.`,
+        })
       })
     }, effectiveTimeout)
 
     child.stdout?.on('data', (chunk: Buffer) => {
+      const remaining = BASH_OUTPUT_BYTE_LIMIT - stdoutBytes
+      if (remaining > 0) stdout += stdoutDecoder.write(chunk.subarray(0, remaining))
       stdoutBytes += chunk.length
-      if (stdoutBytes <= BASH_OUTPUT_BYTE_LIMIT) {
-        stdout += chunk.toString('utf-8')
-      } else if (!truncated) {
-        truncated = true
+      if (stdoutBytes > BASH_OUTPUT_BYTE_LIMIT && !stdoutTruncated) {
+        stdoutTruncated = true
         stdout += `\n\n[stdout truncated at ${BASH_OUTPUT_BYTE_LIMIT} bytes]`
       }
     })
     child.stderr?.on('data', (chunk: Buffer) => {
+      const remaining = BASH_OUTPUT_BYTE_LIMIT - stderrBytes
+      if (remaining > 0) stderr += stderrDecoder.write(chunk.subarray(0, remaining))
       stderrBytes += chunk.length
-      if (stderrBytes <= BASH_OUTPUT_BYTE_LIMIT) {
-        stderr += chunk.toString('utf-8')
-      } else if (!truncated) {
-        truncated = true
+      if (stderrBytes > BASH_OUTPUT_BYTE_LIMIT && !stderrTruncated) {
+        stderrTruncated = true
         stderr += `\n\n[stderr truncated at ${BASH_OUTPUT_BYTE_LIMIT} bytes]`
       }
     })
@@ -636,10 +678,9 @@ async function runBash(
     child.on('close', (code, signal) => {
       const exitCode = typeof code === 'number' ? code : signal ? 128 + (signal as unknown as number) : -1
       const durationMs = Date.now() - startedAt
-      if (signal === 'SIGKILL' && settled) {
-        // already finished by killTimer
-        return
-      }
+      if (timedOut) return
+      if (!stdoutTruncated) stdout += stdoutDecoder.end()
+      if (!stderrTruncated) stderr += stderrDecoder.end()
       const payload: ToolResult<{
         stdout: string
         stderr: string

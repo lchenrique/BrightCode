@@ -780,9 +780,12 @@ export function TaskWorkspace({
           </div>
         )}
 
-        {activeSurface === 'terminal' && selectedTerminalId && project && (
+        {selectedTerminalId && project && (
           <div
-            className="relative flex min-h-0 min-w-0 flex-1 flex-col"
+            className={cn(
+              'relative min-h-0 min-w-0 flex-1 flex-col',
+              activeSurface === 'terminal' ? 'flex' : 'hidden',
+            )}
             data-editor-group="terminal"
             data-terminal-active={selectedTerminalId}
           >
@@ -791,7 +794,7 @@ export function TaskWorkspace({
                 key={term.id}
                 instanceKey={term.id}
                 project={project}
-                active={term.id === selectedTerminalId}
+                active={activeSurface === 'terminal' && term.id === selectedTerminalId}
                 onShellReady={setShellTitle}
               />
             ))}

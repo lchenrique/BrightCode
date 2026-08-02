@@ -111,7 +111,7 @@ export function useTheme() {
 
   useEffect(() => {
     const html = document.documentElement
-    const rootEl = document.getElementById('root') ?? html
+    const scaleEl = document.body
 
     // 1. Set data-theme for preset
     if (themePreset === 'default') {
@@ -128,13 +128,9 @@ export function useTheme() {
     html.classList.toggle('dark', isDark)
     html.classList.toggle('light', !isDark)
 
-    // 3. Apply font scale + density + word wrap via CSS custom property
-    //    on #root. The scale is a continuous number (0.85 → 2.0), and
-    //    index.css reads `--font-scale` to drive `transform: scale()`
-    //    + the inverse `width/height` so the layout box shrinks in the
-    //    same proportion that the visual grows — nothing pinned to the
-    //    bottom of the viewport (chat input, etc.) gets clipped.
-    rootEl.style.setProperty('--font-scale', String(fontScale))
+    // 3. Scale body so both #root and Radix portals share the same visual
+    //    scale. Inverse dimensions keep the result viewport-sized.
+    scaleEl.style.setProperty('--font-scale', String(fontScale))
     html.setAttribute('data-density', density)
     html.setAttribute('data-word-wrap', String(editorWordWrap))
 

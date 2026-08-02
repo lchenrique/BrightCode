@@ -1,3 +1,5 @@
+import { electronStoreCwd } from './configure-user-data'
+
 /**
  * Electron main process.
  *
@@ -68,9 +70,6 @@ import {
 } from '../../src/lib/providers/models'
 import { createMainProvider } from './agent-runtime/main-provider-factory'
 
-// electron-store is CJS in v8; this interop makes the default import work.
-const StoreCtor = (Store as unknown as { default?: typeof Store }).default ?? Store
-
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = dirname(__filename)
 
@@ -86,6 +85,12 @@ protocol.registerSchemesAsPrivileged([
   },
 ])
 
+// Existing Electron installs used Conf's shared config.json through this CJS interop.
+// Keep that path for user data; isolated smokes use ElectronStore with an explicit cwd.
+const StoreCtor = electronStoreCwd
+  ? Store
+  : ((Store as unknown as { default?: typeof Store }).default ?? Store)
+
 // ── Usage store ────────────────────────────────────────────────────────
 
 type UsageStoreData = {
@@ -95,6 +100,7 @@ type UsageStoreData = {
 
 const usageStore = new StoreCtor<UsageStoreData>({
   name: 'usage',
+  cwd: electronStoreCwd,
   defaults: { records: {}, quotas: {} },
 })
 
@@ -370,7 +376,7 @@ type StoredAccount = {
 type AgentDefinition = {
   id: string
   name: string
-  emoji: string
+  avatarSeed: string
   description: string
   systemPrompt: string
   model: string
@@ -389,12 +395,30 @@ const auth = new StoreCtor<{
   agents: Record<string, AgentDefinition>
 }>({
   name: 'auth',
+  cwd: electronStoreCwd,
   defaults: { credentials: {}, accounts: {}, activeAccounts: {}, agents: {} },
   // TODO(security): add `encryptionKey` once we have a passphrase flow.
   // For now the file is plain JSON on disk — still better than
   // localStorage in a browser profile because it's never synced or
   // exposed to web content.
 })
+
+const storedAgents = auth.get('agents') as Record<
+  string,
+  AgentDefinition & { emoji?: string }
+>
+let agentsMigrated = false
+for (const agent of Object.values(storedAgents)) {
+  if (!agent.avatarSeed) {
+    agent.avatarSeed = agent.emoji || agent.name || 'agent'
+    agentsMigrated = true
+  }
+  if ('emoji' in agent) {
+    delete agent.emoji
+    agentsMigrated = true
+  }
+}
+if (agentsMigrated) auth.set('agents', storedAgents)
 
 // ── Window ──────────────────────────────────────────────────────────────
 
