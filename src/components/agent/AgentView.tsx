@@ -7,9 +7,11 @@ import { agentStore } from '@/lib/agents'
 export function AgentView({
   agentName,
   avatarSeed,
+  onOpenAgentConversation,
 }: {
   agentName: string
   avatarSeed: string
+  onOpenAgentConversation?: (agentId: string) => void
 }) {
   const [progressOpen, setProgressOpen] = useState(true)
 
@@ -56,6 +58,7 @@ export function AgentView({
             toolFilter={
               agent.tools.length > 0 ? agent.tools : undefined
             }
+            onOpenAgentConversation={onOpenAgentConversation}
           />
         </div>
 

@@ -57,6 +57,7 @@ import {
 import { getAllTools } from '@/lib/agents/tools'
 import { agentStore } from '@/lib/agents'
 import { runAgent, type AgentTask } from '@/lib/agents/runner'
+import { agentTaskId, appendAgentTranscript, type AgentTranscriptMessage } from '@/lib/agents/transcript'
 import {
   readLastSelectedModel,
   saveLastSelectedModel,
@@ -382,6 +383,12 @@ export interface ChatSurfaceProps {
    * clear the pending message from the store / state.
    */
   onInitialMessageSent?: () => void
+  /**
+   * Opens the chat of a peer agent (a Teams agent). Wired by the parent
+   * view so the "Open conversation" button inside the delegation card
+   * navigates to the peer's transcript.
+   */
+  onOpenAgentConversation?: (agentId: string) => void
 }
 
 export function ChatSurface({
@@ -394,6 +401,7 @@ export function ChatSurface({
   onToolResult,
   initialMessage,
   onInitialMessageSent,
+  onOpenAgentConversation,
 }: ChatSurfaceProps) {
   // Reactive model catalog from the registry
   const available = useAvailableModels()
@@ -1264,12 +1272,48 @@ export function ChatSurface({
             const stopped = controller.signal.aborted
             const ok = !agentError && !stopped
             const summary = ok
-              ? `Agent ${agent.name} completed — ${agentOutput.length} chars`
+              ? `Agent ${agent.name} replied — ${agentOutput.length} chars`
               : stopped
                 ? `Agent ${agent.name} stopped by user`
                 : agentError
 
             if (!ok) failedTools += 1
+
+            // Persist the exchange inside the peer agent's own transcript
+            // so the user can open the agent from the sidebar and see the
+            // full conversation. The agent's chat is independent from the
+            // orchestrator's — exactly like a real 1:1 between two agents.
+            const peerTaskId = agentTaskId(agent)
+            try {
+              const peerMessages: AgentTranscriptMessage[] = []
+              peerMessages.push({
+                id: `peer-${crypto.randomUUID()}`,
+                role: 'user',
+                content: task.task,
+                peerName: 'Bright',
+                createdAt: Date.now(),
+              })
+              if (ok || (stopped && agentOutput)) {
+                peerMessages.push({
+                  id: `peer-${crypto.randomUUID()}`,
+                  role: 'assistant',
+                  content: agentOutput,
+                  model: agent.model,
+                  ...(agentThinking ? { thinking: agentThinking } : {}),
+                  createdAt: Date.now(),
+                })
+              } else if (agentError) {
+                peerMessages.push({
+                  id: `peer-${crypto.randomUUID()}`,
+                  role: 'error',
+                  content: `Error: ${agentError}`,
+                  createdAt: Date.now(),
+                })
+              }
+              await appendAgentTranscript(agent.id, peerMessages)
+            } catch (persistError) {
+              console.error('[chat] failed to persist agent transcript', persistError)
+            }
 
             const uiMessage: Message = {
               id: toolResultId,
@@ -1289,6 +1333,7 @@ export function ChatSurface({
               isAgentResult: true,
               agentName: agent.name,
               agentAvatarSeed: agent.avatarSeed,
+              agentTaskId: peerTaskId,
               ...(agentThinking ? { agentThinking } : {}),
             }
 
@@ -1470,6 +1515,7 @@ export function ChatSurface({
               messages={messages}
               isStreaming={isStreaming}
               contextStatus={contextStatus}
+              onOpenAgentConversation={onOpenAgentConversation}
             />
           )}
         </div>
@@ -1524,10 +1570,12 @@ function MessageList({
   messages,
   isStreaming,
   contextStatus,
+  onOpenAgentConversation,
 }: {
   messages: Message[]
   isStreaming: boolean
   contextStatus: ContextWindowStatus | null
+  onOpenAgentConversation?: (agentId: string) => void
 }) {
   const items: Array<
     | { kind: 'msg'; message: Message; compact?: boolean }
@@ -1603,6 +1651,7 @@ function MessageList({
               <MessageBubble
                 message={it.message}
                 compact={it.compact}
+                onOpenAgentConversation={onOpenAgentConversation}
               />
             </div>
           )

@@ -101,6 +101,33 @@ try {
       tools: [],
       enabled: true,
     })
+    // Peer agent the orchestrator can delegate to. The conversation
+    // transcript for this agent is seeded so we can verify the
+    // peerName/avatar/agentTaskId fields round-trip through the UI.
+    const peerAgent = await window.electronAPI.agents.add({
+      name: 'Electron Peer Agent',
+      avatarSeed: 'electron-peer-smoke',
+      description: 'Peer fixture for delegation smoke',
+      systemPrompt: 'You are a peer agent used in delegation smoke tests.',
+      model: 'minimax/MiniMax-M3',
+      tools: [],
+      enabled: true,
+    })
+    const peerTaskId = 'agent-' + peerAgent.id
+    await window.electronAPI.tasks.saveMessages(peerTaskId, [
+      {
+        id: 'peer-user-1',
+        role: 'user',
+        content: 'Hi from Bright — please reply with a short acknowledgement.',
+        peerName: 'Bright',
+      },
+      {
+        id: 'peer-assistant-1',
+        role: 'assistant',
+        content: 'Ack from peer agent: ready to help with the BrightCode delegation smoke.',
+        model: 'MiniMax-M3',
+      },
+    ])
     const task = await window.electronAPI.tasks.create({ projectId: project.id, title: ${JSON.stringify(fixtureTitle)} })
     const chatMessages = Array.from({ length: 24 }, (_, index) => [
       {
@@ -126,6 +153,8 @@ try {
       projectCreated,
       originalProjectId: originalActive?.id ?? null,
       agentId: agent.id,
+      peerAgentId: peerAgent.id,
+      peerAgentName: peerAgent.name,
       taskId: task.id,
       searchTaskIds,
     }
@@ -279,6 +308,44 @@ try {
     if (scale === '1.37') chatScrollShot = await screenshot('electron-restored-chat-scroll.png')
   }
   await evaluate(`document.body.style.setProperty('--font-scale', localStorage.getItem('brightcode:font-scale') || '1')`)
+
+  // Click the peer agent fixture in the sidebar and verify the
+  // agent's own conversation opens with the peer message rendered
+  // and the peer's name labeled above the user bubble.
+  const peerOpen = await evaluate(`(() => {
+    const row = Array.from(document.querySelectorAll('[data-sidebar="menu-button"]'))
+      .find((item) => item.textContent?.includes(${JSON.stringify(fixture.peerAgentName)}))
+    row?.click()
+    return Boolean(row)
+  })()`)
+  assert(peerOpen, `Peer agent row missing: ${fixture.peerAgentName}`)
+  for (let attempt = 0; attempt < 40; attempt++) {
+    const ready = await evaluate(`Boolean(document.querySelector('[data-chat-composer]'))`)
+    if (ready) break
+    await wait(200)
+  }
+  const peerView = await evaluate(`(() => {
+    const composer = document.querySelector('[data-chat-composer]')
+    const peerLabels = Array.from(document.querySelectorAll('span'))
+      .map((span) => span.textContent?.trim() ?? '')
+      .filter((text) => text === 'Bright')
+    const userBubbleTexts = Array.from(document.querySelectorAll('div'))
+      .filter((node) => Array.from(node.classList ?? []).some((cls) => cls.includes('bg-secondary')))
+      .map((node) => node.textContent ?? '')
+    return {
+      composer: Boolean(composer),
+      brightLabelCount: peerLabels.length,
+      hasUserBubble: userBubbleTexts.some((text) => text.includes('Hi from Bright')),
+    }
+  })()`)
+  assert(peerView.composer, 'Peer agent composer missing')
+  assert(peerView.brightLabelCount > 0, `Peer user bubble did not show 'Bright' label: ${JSON.stringify(peerView)}`)
+  assert(peerView.hasUserBubble, 'Peer user bubble did not render the seeded message')
+  const peerShot = await screenshot('electron-restored-peer-agent.png')
+  // Go back to the task so the rest of the smoke continues against
+  // the original ChatSurface.
+  await evaluate(`document.querySelector('[data-task-id="' + ${JSON.stringify(fixture.taskId)} + '"]')?.click()`)
+  await wait(800)
 
   await evaluate(`document.querySelector('button[aria-label="Open project files"]')?.click()`)
   await wait(1200)
@@ -538,13 +605,14 @@ try {
   })()`)
 
   assert(exceptions.length === 0, `Runtime exceptions: ${exceptions.join('\n')}`)
-  console.log(JSON.stringify({ mode, pageUrl: page.url, newTaskState, baseState, chatScrollStates, filesState, filesVisible, terminalBefore, terminalAfter, scaleState, screenshots: [newTaskShot, chatScrollShot, terminalShot, skillsShot, scaleShot], exceptions }, null, 2))
+  console.log(JSON.stringify({ mode, pageUrl: page.url, newTaskState, baseState, chatScrollStates, peerView, filesState, filesVisible, terminalBefore, terminalAfter, scaleState, screenshots: [newTaskShot, chatScrollShot, peerShot, terminalShot, skillsShot, scaleShot], exceptions }, null, 2))
   console.log('Electron restored smoke passed.')
 } finally {
   try {
     await evaluate(`(async () => {
       const fixture = ${JSON.stringify(fixture)}
       for (const taskId of fixture?.searchTaskIds ?? []) await window.electronAPI.tasks.remove(taskId)
+      if (fixture?.peerAgentId) await window.electronAPI.agents.remove(fixture.peerAgentId)
       if (fixture?.taskId) await window.electronAPI.tasks.remove(fixture.taskId)
       if (fixture?.agentId) await window.electronAPI.agents.remove(fixture.agentId)
       if (fixture?.originalProjectId) await window.electronAPI.projects.setActive(fixture.originalProjectId)

@@ -37,6 +37,14 @@ export interface Message {
   }>
   /** Stateless provider output that must survive task persistence. */
   providerOutputItems?: Array<Record<string, unknown>>
+  /**
+   * Display name of the peer that produced this user message. Used by
+   * the agent chat to label messages coming from the orchestrator
+   * (e.g. "Bright") when the orchestrator delegated a task.
+   */
+  peerName?: string
+  /** DiceBear seed for the peer's avatar. */
+  peerAvatarSeed?: string
   /** True once the tool call has been executed and the result fed back. */
   toolResolved?: boolean
   /** Short label for the tool result, e.g. "12 files" or "324 bytes". */
@@ -59,6 +67,12 @@ export interface Message {
    * and shown as a collapsible "Thought" block in the timeline.
    */
   agentThinking?: string
+  /**
+   * taskId of the peer agent's own conversation. When set, the bubble
+   * surfaces a "Open conversation" link so the user can jump straight
+   * to the peer agent's chat from the orchestrator's transcript.
+   */
+  agentTaskId?: string
 }
 
 /**

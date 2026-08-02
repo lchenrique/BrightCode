@@ -7,14 +7,16 @@
  */
 
 import { memo, useState } from 'react'
-import { AlertCircle, ChevronRight, Wrench } from 'lucide-react'
+import { AlertCircle, ChevronRight, ExternalLink, Wrench } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { type Message } from './types'
 import { MarkdownRenderer } from './MarkdownRenderer'
+import { AgentAvatar } from '@/components/ui/agent-avatar'
 
 function MessageBubbleComponent({
   message,
   compact = false,
+  onOpenAgentConversation,
 }: {
   message: Message
   /**
@@ -25,12 +27,20 @@ function MessageBubbleComponent({
    * streaming) is shown, sitting tight against the turn above.
    */
   compact?: boolean
+  /** Opens the peer agent's own chat (rendered as a link in agent
+   *  delegation cards). Provided by the parent view (TaskView/AgentView). */
+  onOpenAgentConversation?: (agentId: string) => void
 }) {
   if (message.role === 'user') {
     const images = (message.contentBlocks ?? [])
       .filter((b): b is { type: 'image'; data: string; mediaType: string } => b.type === 'image')
     return (
-      <div className="flex justify-end">
+      <div className="flex flex-col items-end gap-1">
+        {message.peerName && (
+          <span className="text-muted-foreground text-[11px] font-medium">
+            {message.peerName}
+          </span>
+        )}
         <div className="bg-secondary/60 max-w-[85%] rounded-2xl px-4 py-2.5 text-[14px] leading-relaxed">
           {images.length > 0 && (
             <div className="mb-2 flex flex-wrap gap-1.5">
@@ -57,6 +67,11 @@ function MessageBubbleComponent({
   if (message.role === 'tool') {
     const tc = message.toolCalls?.[0]
     const summary = message.toolResultSummary
+    // Agent delegation: render a richer card that links to the peer
+    // agent's own chat so the user can see the full exchange.
+    if (message.isAgentResult && (message.agentTaskId || message.agentName)) {
+      return <AgentResultCard message={message} onOpenAgentConversation={onOpenAgentConversation} />
+    }
     return (
       <div className="ml-1 flex flex-col gap-1">
         <div
@@ -133,8 +148,73 @@ function MessageBubbleComponent({
 export const MessageBubble = memo(
   MessageBubbleComponent,
   (previous, next) =>
-    previous.message === next.message && previous.compact === next.compact,
+    previous.message === next.message &&
+    previous.compact === next.compact &&
+    previous.onOpenAgentConversation === next.onOpenAgentConversation,
 )
+
+function AgentResultCard({
+  message,
+  onOpenAgentConversation,
+}: {
+  message: Message
+  onOpenAgentConversation?: (agentId: string) => void
+}) {
+  const tc = message.toolCalls?.[0]
+  const peerAgentId = message.agentTaskId?.replace(/^agent-/, '')
+  const taskInput = (tc?.input ?? {}) as { task?: string }
+  const requested = typeof taskInput.task === 'string' ? taskInput.task : ''
+  return (
+    <div
+      data-agent-delegation-card={peerAgentId ?? 'unknown'}
+      className={cn(
+        'border-border/60 bg-card/40 ml-1 flex flex-col gap-2 rounded-lg border px-3 py-2.5 text-[12.5px]',
+        message.toolError && 'border-destructive/40 bg-destructive/5',
+      )}
+    >
+      <div className="flex items-center gap-2">
+        {message.agentAvatarSeed ? (
+          <AgentAvatar
+            seed={message.agentAvatarSeed}
+            size={18}
+            className="ring-0"
+          />
+        ) : null}
+        <span className="text-foreground/90 text-[12.5px] font-medium">
+          {message.agentName ?? 'Peer agent'}
+        </span>
+        <span className="text-muted-foreground/70 ml-auto text-[11px]">
+          {message.toolError
+            ? (message.toolResultSummary?.replace(/^Error:\s*/i, '') || 'failed')
+            : message.toolStopped
+              ? 'stopped by user'
+              : 'replied'}
+        </span>
+      </div>
+      {requested && (
+        <p className="text-muted-foreground/80 text-[11.5px] leading-relaxed">
+          <span className="text-muted-foreground/60">Asked:</span> {requested}
+        </p>
+      )}
+      {message.content && (
+        <div className="text-foreground/90 border-border/40 max-h-72 overflow-y-auto rounded-md border bg-background/40 p-2 text-[12.5px] leading-relaxed">
+          <MarkdownRenderer content={message.content} />
+        </div>
+      )}
+      {peerAgentId && onOpenAgentConversation && (
+        <button
+          type="button"
+          onClick={() => onOpenAgentConversation(peerAgentId)}
+          data-open-agent-conversation={peerAgentId}
+          className="text-primary hover:text-primary/80 inline-flex items-center gap-1 self-start text-[11.5px] font-medium"
+        >
+          <ExternalLink className="size-3" />
+          Open conversation with {message.agentName ?? 'agent'}
+        </button>
+      )}
+    </div>
+  )
+}
 
 function ToolCallList({
   toolCalls,

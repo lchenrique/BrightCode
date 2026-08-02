@@ -9,7 +9,13 @@ import type { Project } from '@/lib/projects/store'
  * A conversation workspace where Chat and opened files share the main tab bar.
  * The optional right sidebar is reserved for the project FileTree.
  */
-export function TaskView({ taskId }: { taskId: string }) {
+export function TaskView({
+  taskId,
+  onOpenAgentConversation,
+}: {
+  taskId: string
+  onOpenAgentConversation?: (agentId: string) => void
+}) {
   const task = useTask(taskId)
   const projects = useProjects()
   const [explorerOpen, setExplorerOpen] = useState(false)
@@ -64,6 +70,7 @@ export function TaskView({ taskId }: { taskId: string }) {
       title={task.title}
       taskId={taskId}
       project={project}
+      onOpenAgentConversation={onOpenAgentConversation}
       initialMessage={initialMessage}
       explorerOpen={explorerOpen}
       onToggleExplorer={toggleExplorer}

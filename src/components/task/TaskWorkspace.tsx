@@ -323,6 +323,7 @@ export function TaskWorkspace({
   onToggleExplorer,
   envInfoOpen,
   onToggleEnvInfo,
+  onOpenAgentConversation,
 }: {
   title: string
   taskId: string
@@ -335,6 +336,7 @@ export function TaskWorkspace({
   onToggleExplorer?: () => void
   envInfoOpen: boolean
   onToggleEnvInfo?: () => void
+  onOpenAgentConversation?: (agentId: string) => void
 }) {
   const [tabs, setTabs] = useState<OpenFile[]>([])
   const [terminalTabs, setTerminalTabs] = useState<TerminalTab[]>([])
@@ -653,6 +655,7 @@ export function TaskWorkspace({
                 taskId={taskId}
                 project={project}
                 initialMessage={initialMessage}
+                onOpenAgentConversation={onOpenAgentConversation}
               />
             </div>
 

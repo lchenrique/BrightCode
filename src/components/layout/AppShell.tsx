@@ -13,6 +13,7 @@ import { useActiveProject, useProjectsActions } from '@/hooks/use-projects'
 import { tasksStore, deriveTaskTitle } from '@/lib/tasks/store'
 import { requestProjectFileOpen } from '@/lib/projects/file-events'
 import { BashApprovalDialog } from '@/components/chat/BashApprovalDialog'
+import { agentStore } from '@/lib/agents'
 
 import { SkillsView } from '@/components/skills/SkillsView'
 import { BrightMemoryView } from '@/components/bright-memory/BrightMemoryView'
@@ -89,6 +90,21 @@ export function AppShell() {
 
   const handleSidebarResize = useCallback((widthRem: number) => {
     setSidebarWidth(clampSidebarWidth(widthRem))
+  }, [])
+
+  /**
+   * Switch the view to a Teams agent's own conversation. Used by the
+   * "Open conversation" button in agent delegation cards. Resolves
+   * the agent by id (which is what we have at click time) and falls
+   * back to the welcome view if the agent is gone.
+   */
+  const openAgentConversation = useCallback((agentId: string) => {
+    const agent = agentStore.list().find((a) => a.id === agentId)
+    if (!agent) {
+      setView({ kind: 'welcome' })
+      return
+    }
+    setView({ kind: 'agent', name: agent.name, avatarSeed: agent.avatarSeed })
   }, [])
 
   /**
@@ -173,9 +189,20 @@ export function AppShell() {
           {view.kind === 'welcome' && (
             <WelcomeScreen onCreateTask={handleCreateTask} />
           )}
-          {view.kind === 'task' && <TaskView key={view.id} taskId={view.id} />}
+          {view.kind === 'task' && (
+            <TaskView
+              key={view.id}
+              taskId={view.id}
+              onOpenAgentConversation={openAgentConversation}
+            />
+          )}
           {view.kind === 'agent' && (
-            <AgentView key={view.name} agentName={view.name} avatarSeed={view.avatarSeed} />
+            <AgentView
+              key={view.name}
+              agentName={view.name}
+              avatarSeed={view.avatarSeed}
+              onOpenAgentConversation={openAgentConversation}
+            />
           )}
           {view.kind === 'skills' && <SkillsView />}
           {view.kind === 'bright-memory' && <BrightMemoryView />}
