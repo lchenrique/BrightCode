@@ -1448,15 +1448,16 @@ export function ChatSurface({
   }
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
+    <div className="flex min-h-0 min-w-0 flex-1 flex-col">
       {/* Message list — owns the scroll */}
       <div
         ref={scrollRef}
+        data-chat-scroll
         onScroll={handleScroll}
         onWheel={(event) => {
           if (event.deltaY < 0) isAtBottomRef.current = false
         }}
-        className="min-h-0 flex-1 overflow-y-auto px-6 py-6"
+        className="chat-scrollbar min-h-0 flex-1 overflow-y-auto px-6 py-6"
       >
         <div
           ref={scrollContentRef}

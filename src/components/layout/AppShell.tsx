@@ -169,7 +169,7 @@ export function AppShell() {
           onSidebarResize={handleSidebarResize}
         />
 
-        <main className="bg-background relative flex-1 overflow-hidden">
+        <main className="bg-background relative min-w-0 flex-1 overflow-hidden">
           {view.kind === 'welcome' && (
             <WelcomeScreen onCreateTask={handleCreateTask} />
           )}

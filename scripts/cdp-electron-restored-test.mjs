@@ -102,6 +102,20 @@ try {
       enabled: true,
     })
     const task = await window.electronAPI.tasks.create({ projectId: project.id, title: ${JSON.stringify(fixtureTitle)} })
+    const chatMessages = Array.from({ length: 24 }, (_, index) => [
+      {
+        id: 'scroll-user-' + index,
+        role: 'user',
+        content: 'Scroll fixture request ' + index + ': inspect the Electron chat history without moving the composer.',
+      },
+      {
+        id: 'scroll-assistant-' + index,
+        role: 'assistant',
+        content: 'Scroll fixture response ' + index + '. The message list must own overflow while the shared composer stays pinned below it.',
+        model: 'MiniMax-M3',
+      },
+    ]).flat()
+    await window.electronAPI.tasks.saveMessages(task.id, chatMessages)
     const searchTaskIds = []
     for (let index = 0; index < 30; index++) {
       const searchTask = await window.electronAPI.tasks.create({ projectId: project.id, title: 'Scale Search Fixture ' + String(index).padStart(2, '0') })
@@ -187,6 +201,84 @@ try {
   assert(baseState.systemIcons >= 10, `Expected Lucide system icons, found ${baseState.systemIcons}`)
   assert(baseState.officialAvatars === 1 && baseState.officialInHeader, `Official avatar escaped header: ${JSON.stringify(baseState)}`)
   assert(baseState.dicebearSeeds.includes('electron-restored-smoke'), `Agent DiceBear identity missing: ${JSON.stringify(baseState)}`)
+
+  const chatScrollStates = []
+  let chatScrollShot = null
+  for (const scale of ['0.85', '1', '1.37', '2']) {
+    await evaluate(`document.body.style.setProperty('--font-scale', ${JSON.stringify(scale)})`)
+    for (let attempt = 0; attempt < 20; attempt++) {
+      const stable = await evaluate(`(() => {
+        const scroller = document.querySelector('[data-chat-scroll]')
+        if (!scroller) return false
+        return Math.abs(scroller.getBoundingClientRect().right - innerWidth) < 2
+      })()`)
+      if (stable) break
+      await wait(50)
+    }
+    const before = await evaluate(`(() => {
+      const scroller = document.querySelector('[data-chat-scroll]')
+      const composer = document.querySelector('[data-editor-group="chat"] [data-chat-composer]')
+      if (!scroller || !composer) return null
+      scroller.scrollTop = 0
+      const rect = scroller.getBoundingClientRect()
+      const composerRect = composer.getBoundingClientRect()
+      const style = getComputedStyle(scroller)
+      const thumbStyle = getComputedStyle(scroller, '::-webkit-scrollbar-thumb')
+      const visibleLeft = Math.max(0, rect.left)
+      const visibleRight = Math.min(innerWidth - 1, rect.right)
+      const visibleTop = Math.max(0, rect.top)
+      const visibleBottom = Math.min(innerHeight - 1, rect.bottom)
+      const x = (visibleLeft + visibleRight) / 2
+      const y = (visibleTop + visibleBottom) / 2
+      const hit = document.elementFromPoint(x, y)
+      return {
+        x,
+        y,
+        hitInsideScroller: Boolean(hit && scroller.contains(hit)),
+        scrollerLeft: rect.left,
+        scrollerRight: rect.right,
+        viewportWidth: innerWidth,
+        clientHeight: scroller.clientHeight,
+        scrollHeight: scroller.scrollHeight,
+        clientWidth: scroller.clientWidth,
+        scrollWidth: scroller.scrollWidth,
+        overflowY: style.overflowY,
+        scrollbarColor: style.scrollbarColor,
+        thumbColor: thumbStyle.backgroundColor,
+        thumbBorder: thumbStyle.borderTopWidth,
+        composerTop: composerRect.top,
+        composerBottom: composerRect.bottom,
+      }
+    })()`)
+    assert(before && before.overflowY === 'auto' && before.scrollHeight > before.clientHeight, `Chat overflow missing at ${scale}: ${JSON.stringify(before)}`)
+    assert(before.clientWidth === before.scrollWidth, `Chat leaked horizontally at ${scale}: ${JSON.stringify(before)}`)
+    assert(before.hitInsideScroller && before.scrollerLeft >= 0 && before.scrollerRight <= before.viewportWidth + 1, `Chat scrollbar outside viewport at ${scale}: ${JSON.stringify(before)}`)
+    assert(before.scrollbarColor !== 'auto' && before.thumbColor !== 'rgba(0, 0, 0, 0)' && before.thumbBorder === '2px', `Chat scrollbar contrast missing at ${scale}: ${JSON.stringify(before)}`)
+    await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: before.x, y: before.y })
+    await send('Input.dispatchMouseEvent', { type: 'mouseWheel', x: before.x, y: before.y, deltaX: 0, deltaY: 600 })
+    await wait(150)
+    const after = await evaluate(`(() => {
+      const scroller = document.querySelector('[data-chat-scroll]')
+      const composer = document.querySelector('[data-editor-group="chat"] [data-chat-composer]')
+      if (!scroller || !composer) return null
+      const wheelScrollTop = scroller.scrollTop
+      scroller.scrollTop = scroller.scrollHeight
+      const composerRect = composer.getBoundingClientRect()
+      return {
+        wheelScrollTop,
+        scrollTop: scroller.scrollTop,
+        maxScrollTop: scroller.scrollHeight - scroller.clientHeight,
+        composerTop: composerRect.top,
+        composerBottom: composerRect.bottom,
+        composerVisible: composerRect.top >= 0 && composerRect.bottom <= innerHeight,
+      }
+    })()`)
+    assert(after && after.wheelScrollTop > 0 && Math.abs(after.scrollTop - after.maxScrollTop) < 2, `Chat wheel/programmatic scroll failed at ${scale}: ${JSON.stringify({ before, after })}`)
+    assert(after.composerVisible && Math.abs(after.composerTop - before.composerTop) < 2 && Math.abs(after.composerBottom - before.composerBottom) < 2, `Chat composer moved at ${scale}: ${JSON.stringify({ before, after })}`)
+    chatScrollStates.push({ scale, ...before, ...after })
+    if (scale === '1.37') chatScrollShot = await screenshot('electron-restored-chat-scroll.png')
+  }
+  await evaluate(`document.body.style.setProperty('--font-scale', localStorage.getItem('brightcode:font-scale') || '1')`)
 
   await evaluate(`document.querySelector('button[aria-label="Open project files"]')?.click()`)
   await wait(1200)
@@ -446,7 +538,7 @@ try {
   })()`)
 
   assert(exceptions.length === 0, `Runtime exceptions: ${exceptions.join('\n')}`)
-  console.log(JSON.stringify({ mode, pageUrl: page.url, newTaskState, baseState, filesState, filesVisible, terminalBefore, terminalAfter, scaleState, screenshots: [newTaskShot, terminalShot, skillsShot, scaleShot], exceptions }, null, 2))
+  console.log(JSON.stringify({ mode, pageUrl: page.url, newTaskState, baseState, chatScrollStates, filesState, filesVisible, terminalBefore, terminalAfter, scaleState, screenshots: [newTaskShot, chatScrollShot, terminalShot, skillsShot, scaleShot], exceptions }, null, 2))
   console.log('Electron restored smoke passed.')
 } finally {
   try {
