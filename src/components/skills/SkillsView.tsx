@@ -30,7 +30,7 @@ export interface DiscoveredSkill {
   id: string
   name: string
   description: string
-  source: 'codex' | 'agents' | 'gemini' | 'opencode' | 'project'
+  source: 'codex' | 'agents' | 'gemini' | 'opencode' | 'project' | 'user'
   sourceLabel: string
   folderPath: string
   skillFilePath: string
@@ -39,7 +39,7 @@ export interface DiscoveredSkill {
   tags?: string[]
 }
 
-type SourceFilter = 'all' | 'codex' | 'agents' | 'gemini' | 'opencode' | 'project'
+type SourceFilter = 'all' | 'codex' | 'agents' | 'gemini' | 'opencode' | 'project' | 'user'
 
 const SKILLS_DRAWER_WIDTH_KEY = 'brightcode:skills-drawer-width'
 const SKILLS_DRAWER_DEFAULT_WIDTH = 560
@@ -75,7 +75,15 @@ const SOURCE_COLORS: Record<
     text: 'text-indigo-400',
     icon: Folder,
   },
+  user: {
+    badge: 'bg-rose-500/10 text-rose-400 border-rose-500/30',
+    text: 'text-rose-400',
+    icon: Sparkles,
+  },
 }
+
+/** Fallback for skill sources the UI does not know yet — degrades instead of crashing. */
+const FALLBACK_STYLE = SOURCE_COLORS.agents
 
 export function SkillsView() {
   const activeProject = useActiveProject()
@@ -253,6 +261,7 @@ export function SkillsView() {
       gemini: 0,
       opencode: 0,
       project: 0,
+      user: 0,
     }
     for (const s of skills) {
       counts[s.source] = (counts[s.source] || 0) + 1
@@ -319,6 +328,7 @@ export function SkillsView() {
                   { id: 'gemini', label: 'Antigravity / Gemini' },
                   { id: 'opencode', label: 'OpenCode Collection' },
                   { id: 'project', label: 'Project Local' },
+                  { id: 'user', label: 'User Library' },
                 ] as const
               ).map(({ id, label }) => {
                 const count = sourceCounts[id]
@@ -369,7 +379,7 @@ export function SkillsView() {
             ) : (
               <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2 lg:grid-cols-3">
                 {filteredSkills.map((s) => {
-                  const style = SOURCE_COLORS[s.source]
+                  const style = SOURCE_COLORS[s.source] ?? FALLBACK_STYLE
                   const Icon = style.icon
                   const isSelected = selectedSkill?.id === s.id
 
@@ -456,7 +466,7 @@ export function SkillsView() {
                     <span
                       className={cn(
                         'hidden shrink-0 rounded-full border px-1.5 py-px text-[9px] font-medium xl:inline-flex',
-                        SOURCE_COLORS[selectedSkill.source].badge,
+                        (SOURCE_COLORS[selectedSkill.source] ?? FALLBACK_STYLE).badge,
                       )}
                     >
                       {selectedSkill.sourceLabel}
