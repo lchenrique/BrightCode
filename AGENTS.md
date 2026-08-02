@@ -53,6 +53,13 @@ field is dropped from the type.
   comment density of the file you're editing.
 - **Validate with CDP**: any UI change ships with a CDP test in
   `scripts/cdp-*.mjs` and screenshots in `scripts/screenshots/`.
+- **Tauri Windows icon cache**: changing `src-tauri/icons/*` (e.g. re-running
+  `npm run tauri icon`) does NOT re-run tauri-build's Windows resource step —
+  the exe keeps the OLD icon until the build-script output is wiped. Fix:
+  delete `src-tauri/target/debug/build/brightcode-*` (and the release
+  equivalent) before rebuilding. Verify with
+  `[System.Drawing.Icon]::ExtractAssociatedIcon(...)` on a COPY of the exe
+  (same-path extraction hits the OS icon cache).
 
 <!-- bright-memory:start -->
 # Bright Memory
