@@ -14,10 +14,14 @@ export function TeamAvatar({
   seed,
   color,
   size = 'sm',
+  imageSrc,
 }: {
   seed: string
   color: Color
   size?: 'xs' | 'sm' | 'md'
+  /** Override the DiceBear avatar with a local image (e.g. the
+   *  bright-code mascot in `/agent-avatar.png`). */
+  imageSrc?: string
 }) {
   const px = size === 'xs' ? 20 : size === 'sm' ? 24 : 32
   return (
@@ -25,6 +29,7 @@ export function TeamAvatar({
       seed={seed}
       size={px}
       className={`ring-1 ${colorRing[color]}`}
+      imageSrc={imageSrc}
     />
   )
 }

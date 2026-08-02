@@ -567,7 +567,11 @@ function AgentRow({
           className="text-foreground/80"
           onClick={onSelect}
         >
-          <TeamAvatar seed={agent.avatarSeed} color={agent.color} />
+          <TeamAvatar
+            seed={agent.avatarSeed}
+            color={agent.color}
+            imageSrc="/agent-avatar.png"
+          />
           <span className="text-[13px]">{agent.name}</span>
         </SidebarMenuButton>
 

@@ -79,13 +79,44 @@ export function AgentAvatar({
   size = 32,
   className,
   rounded = true,
+  imageSrc,
 }: {
   seed: string
   size?: number
   className?: string
   rounded?: boolean
+  /**
+   * Optional image URL that overrides the DiceBear generated avatar.
+   * Use for agents that ship a custom avatar (e.g. the bright-code
+   * mascot in `public/agent-avatar.png`). When set, `seed` is
+   * ignored and the image is rendered with the same chrome
+   * (rounded, ring) as the generated version.
+   */
+  imageSrc?: string
 }) {
   const svg = useMemo(() => avatarSvg(seed, size), [seed, size])
+  if (imageSrc) {
+    return (
+      <span
+        className={cn(
+          'inline-flex shrink-0 items-center justify-center overflow-hidden bg-secondary/40 ring-1 ring-border/40',
+          rounded && 'rounded-md',
+          className,
+        )}
+        style={{ width: size, height: size }}
+        aria-hidden
+      >
+        <img
+          src={imageSrc}
+          alt=""
+          width={size}
+          height={size}
+          className="size-full object-contain"
+          draggable={false}
+        />
+      </span>
+    )
+  }
   return (
     <span
       className={cn(
