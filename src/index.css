@@ -763,22 +763,16 @@
 
 
 /* -- User-controlled UI scale (Settings → Appearance → Text size) ----
- * Scale <#root>, not <body>: Radix portals mount in document.body (outside
- * #root) and use getBoundingClientRect() to position themselves. If body
- * carries the scale transform, those coordinates are in visual space, but
- * the fixed-position portal ends up misaligned. By scaling #root only, the
- * app content scales visually while Radix portals stay in normal document
- * space and open at the correct position. */
+ * Done in the main process via webContents.setZoomFactor (Ctrl +/-
+ * equivalent). No CSS transform math here on purpose: a previous
+ * `transform: scale()` on #root overflowed the viewport at scale > 1
+ * because the positive margin compensation pushed the scaled visual
+ * beyond the right edge of the window. Native browser zoom scales
+ * text, images, and layout in one shot with no overflow surprises. */
 #root {
-  --font-scale: 1;
-  transform-origin: top left;
-  transform: scale(var(--font-scale));
-  width: calc(100% / var(--font-scale));
-  height: calc(100dvh / var(--font-scale));
-  /* Compensate for the narrower layout box so #root still fills the
-   * viewport visually (otherwise a scale > 1 would leave empty space). */
-  margin-left: calc((100vw - (100% / var(--font-scale))) / 2);
-  margin-top: calc((100vh - (100% / var(--font-scale))) / 2);
+  display: flex;
+  min-height: 0;
+  flex-direction: column;
 }
 
 /* Clamp the document to the viewport so the body never grows past the
@@ -794,13 +788,6 @@ html {
 
 body {
   overflow: hidden;
-}
-
-#root {
-  display: flex;
-  min-height: 0;
-  height: 100%;
-  flex-direction: column;
 }
 
 /* -- Text-size slider (Settings → Appearance → Text size) --------------

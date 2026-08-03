@@ -111,9 +111,6 @@ export function useTheme() {
 
   useEffect(() => {
     const html = document.documentElement
-    // Scale #root (not body) so Radix portals in document.body stay in normal
-    // document space and open at the correct position regardless of the scale.
-    const scaleEl = document.getElementById('root') ?? document.body
 
     // 1. Set data-theme for preset
     if (themePreset === 'default') {
@@ -130,9 +127,13 @@ export function useTheme() {
     html.classList.toggle('dark', isDark)
     html.classList.toggle('light', !isDark)
 
-    // 3. Scale #root for the font-size preference. The layout box shrinks
-    //    inversely to keep the visual box viewport-sized.
-    scaleEl.style.setProperty('--font-scale', String(fontScale))
+    // 3. Apply the text-size preference as native browser zoom. Done in
+    //    the main process via webContents.setZoomFactor — the same
+    //    mechanism Ctrl +/- uses. No CSS math, no overflow surprises;
+    //    works because we run inside Electron and have IPC.
+    if (typeof window !== 'undefined' && window.electronAPI?.setZoom) {
+      void window.electronAPI.setZoom(fontScale)
+    }
     html.setAttribute('data-density', density)
     html.setAttribute('data-word-wrap', String(editorWordWrap))
 

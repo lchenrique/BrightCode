@@ -165,6 +165,21 @@ function broadcastUsageChanged(): void {
 
 const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000
 
+// Set the BrowserWindow zoom factor (Ctrl +/- equivalent). Replaces the
+// previous `transform: scale()` approach, which overflowed the viewport
+// at scale > 1 because the positive margin compensation pushed the
+// scaled visual beyond the right edge of the window. Native zoom scales
+// text, images, and layout uniformly without any CSS math.
+ipcMain.handle(IPC.APP_SET_ZOOM, (event, factor: number): void => {
+  if (!Number.isFinite(factor) || factor <= 0) return
+  const clamped = Math.min(Math.max(factor, 0.25), 4)
+  try {
+    event.sender.setZoomFactor(clamped)
+  } catch {
+    // Sender may have been torn down (window closed mid-handle); ignore.
+  }
+})
+
 ipcMain.handle(IPC.USAGE_RECORD, (_e, record: UsageRecord): void => {
   const data = usageStore.get('records')
   data[record.providerId] ??= {}

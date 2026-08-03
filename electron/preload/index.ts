@@ -807,6 +807,14 @@ const electronAPI = {
     chrome: process.versions.chrome,
     node: process.versions.node,
   },
+  /**
+   * Set the BrowserWindow zoom factor (Ctrl +/- equivalent). Replaces
+   * the previous CSS `transform: scale()` approach. Main clamps the
+   * factor into [0.25, 4].
+   */
+  setZoom(factor: number): Promise<void> {
+    return ipcRenderer.invoke(IPC.APP_SET_ZOOM, factor)
+  },
   auth,
   accounts,
   agents,

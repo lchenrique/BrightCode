@@ -196,6 +196,20 @@ export const IPC = {
    * Spawns `git` in the project root, no shell, returns { ok, stdout, stderr, code }.
    */
   GIT_EXEC: 'git:exec',
+
+  /**
+   * Browser zoom (Ctrl +/- equivalent). Renderer asks main to set the
+   * WebContents zoom factor — the same native mechanism the browser
+   * uses for its zoom UI, so it scales text, images, and layout in
+   * one shot without any CSS transform math. Replaces the previous
+   * `transform: scale()` approach which overflowed the viewport at
+   * scale > 1 because the margin compensation pushed the visual
+   * beyond the right edge.
+   *
+   * Renderer → main: invoke(APP_SET_ZOOM, factor)
+   *   factor in [0.85, 2.0]; clamped by the renderer.
+   */
+  APP_SET_ZOOM: 'app:set-zoom',
 } as const
 
 export type IpcChannel = (typeof IPC)[keyof typeof IPC]
