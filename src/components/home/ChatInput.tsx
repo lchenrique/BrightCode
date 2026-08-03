@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, type KeyboardEvent } from 'react'
+import { useState, useRef, useEffect, useMemo, type KeyboardEvent } from 'react'
 import { RefreshCw, Brain, ChevronDown, ChevronLeft, ArrowUp, Sparkles, Search, Check, User, UserCheck, Square, X, Plus, FileCode, Bot, PlusCircle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
@@ -11,21 +11,25 @@ import { providerRegistry } from '@/lib/providers'
 import { useAgents } from '@/hooks/use-agents'
 import { useActiveProjectId } from '@/hooks/use-projects'
 import { cn } from '@/lib/utils'
+import { SlashCommandMenu, type SlashCommandItem } from './chat-input/SlashCommandMenu'
+import {
+  MentionMenu,
+  type MentionFileItem,
+  type MentionAgentItem,
+  type MentionItem,
+} from './chat-input/MentionMenu'
+import { fuzzyFilter } from './chat-input/fuzzy'
 
 // Slash command definitions
-interface SlashCommand {
-  id: string
-  label: string
-  description: string
-  icon: React.ComponentType<{ className?: string }>
+interface SlashCommand extends SlashCommandItem {
   insertText: string
 }
 
 const SLASH_COMMANDS: SlashCommand[] = [
-  { id: 'read-file', label: 'Read file', description: 'Read and display file contents', icon: FileCode, insertText: '/read ' },
-  { id: 'search', label: 'Search', description: 'Search for text in files', icon: Search, insertText: '/search ' },
-  { id: 'new-file', label: 'New file', description: 'Create a new file', icon: PlusCircle, insertText: '/new ' },
-  { id: 'agent', label: 'Delegate to agent', description: 'Ask another agent for help', icon: Bot, insertText: '/delegate ' },
+  { id: 'read-file', label: 'Read file', description: 'Read and display file contents', icon: FileCode, insertText: '/read ', category: 'Files' },
+  { id: 'search', label: 'Search', description: 'Search for text in files', icon: Search, insertText: '/search ', category: 'Files' },
+  { id: 'new-file', label: 'New file', description: 'Create a new file', icon: PlusCircle, insertText: '/new ', category: 'Files' },
+  { id: 'agent', label: 'Delegate to agent', description: 'Ask another agent for help', icon: Bot, insertText: '/delegate ', category: 'Agents' },
 ]
 
 // Placeholder files shown in the @ mention menu when the caller does not
@@ -130,6 +134,8 @@ export interface ChatInputProps {
 
 const MAX_IMAGE_BYTES = 8 * 1024 * 1024 // 8MB per image
 const MAX_IMAGES_PER_MESSAGE = 4
+const MAX_RECENT_MENTIONS = 5
+const RECENT_MENTIONS_KEY = 'brightcode:mention-recents'
 
 const DEFAULT_MODEL_GROUPS: ModelGroup[] = []
 
@@ -193,8 +199,22 @@ export function ChatInput({
   const [imageError, setImageError] = useState<string | null>(null)
   const [slashMenuOpen, setSlashMenuOpen] = useState(false)
   const [slashMenuQuery, setSlashMenuQuery] = useState('')
+  const [slashMenuIndex, setSlashMenuIndex] = useState(0)
   const [mentionMenuOpen, setMentionMenuOpen] = useState(false)
   const [mentionMenuQuery, setMentionMenuQuery] = useState('')
+  const [mentionMenuIndex, setMentionMenuIndex] = useState(0)
+  // Recently-used mentions, persisted to localStorage. The menu shows these
+  // at the top (pinned) when the query is empty, so the user can re-pick a
+  // file or agent they just referenced without retyping.
+  const [recentMentions, setRecentMentions] = useState<string[]>(() => {
+    if (typeof window === 'undefined') return []
+    try {
+      const raw = localStorage.getItem(RECENT_MENTIONS_KEY)
+      return Array.isArray(JSON.parse(raw ?? '[]')) ? JSON.parse(raw ?? '[]') : []
+    } catch {
+      return []
+    }
+  })
   // Mention menu data sources. Real agents come from agentStore so the
   // user can mention an agent by name. Files are still placeholder until
   // the workspace fs lands in the renderer; we keep a small fallback so
@@ -235,6 +255,8 @@ export function ChatInput({
   const mentionFiles = mentionFilesProp ?? workspaceFiles
   const taRef = useRef<HTMLTextAreaElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const slashMenuRef = useRef<HTMLDivElement>(null)
+  const mentionMenuRef = useRef<HTMLDivElement>(null)
 
   // When the caller switches from `modelOptions` to `modelGroups` (or the
   // groups change shape), make sure the current selection still resolves.
@@ -263,6 +285,79 @@ export function ChatInput({
     el.style.height = 'auto'
     el.style.height = `${Math.min(el.scrollHeight, 200)}px`
   }, [value])
+
+  // Transform raw file paths into the structured shape the MentionMenu
+  // expects. Label is the basename, hint is the parent directory. The
+  // basename is what the user types when filtering.
+  const mentionFileItems = useMemo<MentionFileItem[]>(() => {
+    return mentionFiles.map((path) => {
+      const parts = path.split('/')
+      const label = parts.pop() ?? path
+      const hint = parts.length > 0 ? parts.join('/') : undefined
+      return { id: path, label, hint }
+    })
+  }, [mentionFiles])
+
+  const mentionAgentItems = useMemo<MentionAgentItem[]>(() => {
+    return agents.map((a) => ({
+      id: a.id,
+      name: a.name,
+      avatarSeed: a.avatarSeed,
+      description: a.description,
+    }))
+  }, [agents])
+
+  // Filtered, score-sorted lists — same data the menu components render
+  // so the keyboard handler can navigate by index. The menu itself also
+  // computes these (for highlight rendering), but this useMemo gives us
+  // the count and the chosen item without traversing the DOM.
+  const filteredSlashCommands = useMemo<SlashCommand[]>(() => {
+    if (!slashMenuOpen) return []
+    return fuzzyFilter(slashMenuQuery, SLASH_COMMANDS, (item) => `${item.label} ${item.id}`)
+      .filter((m) => m.score > 0)
+      .map((m) => m.item)
+  }, [slashMenuOpen, slashMenuQuery])
+
+  const filteredMentionItems = useMemo<MentionItem[]>(() => {
+    if (!mentionMenuOpen) return []
+    const fileItems: MentionItem[] = mentionFileItems.map((f) => ({
+      key: `file:${f.id}`,
+      kind: 'file',
+      file: f,
+      label: f.label,
+      hint: f.hint,
+    }))
+    const agentItems: MentionItem[] = mentionAgentItems.map((a) => ({
+      key: `agent:${a.id}`,
+      kind: 'agent',
+      agent: a,
+      label: a.name,
+      hint: a.description,
+    }))
+    const all = [...fileItems, ...agentItems]
+    if (!mentionMenuQuery.trim() && recentMentions.length > 0) {
+      // Pin recents to the top when the user hasn't started filtering yet,
+      // so the previous picks surface immediately.
+      const set = new Set(recentMentions)
+      const recentItems: MentionItem[] = []
+      for (const key of recentMentions) {
+        const item = all.find((i) => i.key === key)
+        if (item) recentItems.push({ ...item, kind: 'recent' })
+      }
+      const rest = all.filter((i) => !set.has(i.key))
+      return [...recentItems, ...rest]
+    }
+    return all
+  }, [mentionMenuOpen, mentionMenuQuery, mentionFileItems, mentionAgentItems, recentMentions])
+
+  // Reset the active index whenever the query changes or the menu opens,
+  // so the user lands on the top result instead of a stale position.
+  useEffect(() => {
+    setSlashMenuIndex(0)
+  }, [slashMenuQuery, slashMenuOpen])
+  useEffect(() => {
+    setMentionMenuIndex(0)
+  }, [mentionMenuQuery, mentionMenuOpen])
 
   // Reset the transient image error after a few seconds so the input
   // doesn't stay stuck with a red helper line forever.
@@ -333,7 +428,129 @@ export function ChatInput({
     if (onSend) void onSend({ text, images })
   }
 
+  // Shared insert helpers — used by both the click handler on each menu
+  // row and the keyboard Enter handler. Both call into here so the
+  // cursor placement and menu-close behavior stay identical.
+  function insertAtCursor(before: string, after: string) {
+    const ta = taRef.current
+    if (!ta) {
+      setValue((v) => v + before + after)
+      return
+    }
+    const cursor = ta.selectionStart ?? value.length
+    const next = value.slice(0, cursor) + before + value.slice(cursor) + after
+    setValue(next)
+    const caret = cursor + before.length
+    requestAnimationFrame(() => {
+      ta.focus()
+      ta.setSelectionRange(caret, caret)
+    })
+  }
+
+  function selectSlashCommand(cmd: SlashCommand) {
+    insertAtCursor(cmd.insertText, '')
+    setSlashMenuOpen(false)
+    setSlashMenuQuery('')
+    setSlashMenuIndex(0)
+  }
+
+  function selectMentionItem(item: MentionItem) {
+    const token = item.file
+      ? `@${item.file.id} `
+      : item.agent
+        ? `@${item.agent.name} `
+        : ''
+    if (!token) return
+    insertAtCursor(token, '')
+    setMentionMenuOpen(false)
+    setMentionMenuQuery('')
+    setMentionMenuIndex(0)
+    if (item.kind !== 'recent') {
+      setRecentMentions((prev) => {
+        const next = [item.key, ...prev.filter((k) => k !== item.key)].slice(
+          0,
+          MAX_RECENT_MENTIONS,
+        )
+        if (typeof window !== 'undefined') {
+          try {
+            localStorage.setItem(RECENT_MENTIONS_KEY, JSON.stringify(next))
+          } catch {
+            // localStorage might be full or disabled — ignore, the in-memory
+            // list still works for the current session.
+          }
+        }
+        return next
+      })
+    }
+  }
+
   const handleKey = (e: KeyboardEvent<HTMLTextAreaElement>) => {
+    // Keyboard navigation for the open menus takes priority over the
+    // default textarea behavior — Enter/Esc/Up/Down are reserved for
+    // the active picker so the user can drive everything from the
+    // keyboard, OpenCode/Orkas/OpenChamber style.
+    if (slashMenuOpen) {
+      const items = filteredSlashCommands
+      if (items.length === 0) {
+        if (e.key === 'Escape') {
+          e.preventDefault()
+          setSlashMenuOpen(false)
+        }
+        return
+      }
+      if (e.key === 'ArrowDown') {
+        e.preventDefault()
+        setSlashMenuIndex((i) => Math.min(i + 1, items.length - 1))
+        return
+      }
+      if (e.key === 'ArrowUp') {
+        e.preventDefault()
+        setSlashMenuIndex((i) => Math.max(i - 1, 0))
+        return
+      }
+      if (e.key === 'Enter') {
+        e.preventDefault()
+        const cmd = items[slashMenuIndex]
+        if (cmd) selectSlashCommand(cmd)
+        return
+      }
+      if (e.key === 'Escape' || e.key === 'Tab') {
+        e.preventDefault()
+        setSlashMenuOpen(false)
+        return
+      }
+    }
+    if (mentionMenuOpen) {
+      const items = filteredMentionItems
+      if (items.length === 0) {
+        if (e.key === 'Escape') {
+          e.preventDefault()
+          setMentionMenuOpen(false)
+        }
+        return
+      }
+      if (e.key === 'ArrowDown') {
+        e.preventDefault()
+        setMentionMenuIndex((i) => Math.min(i + 1, items.length - 1))
+        return
+      }
+      if (e.key === 'ArrowUp') {
+        e.preventDefault()
+        setMentionMenuIndex((i) => Math.max(i - 1, 0))
+        return
+      }
+      if (e.key === 'Enter' || e.key === 'Tab') {
+        e.preventDefault()
+        const item = items[mentionMenuIndex]
+        if (item) selectMentionItem(item)
+        return
+      }
+      if (e.key === 'Escape') {
+        e.preventDefault()
+        setMentionMenuOpen(false)
+        return
+      }
+    }
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
       submit()
@@ -430,153 +647,30 @@ export function ChatInput({
         </div>
       )}
 
-      {/* Slash command menu */}
+      {/* Slash command menu — keyboard-driven, OpenCode-style */}
       {slashMenuOpen && (
-        <div className="mb-2 rounded-lg border border-border/60 bg-popover p-1.5 shadow-md">
-          <div className="text-muted-foreground/80 px-2 py-1 text-[10.5px] font-medium tracking-wide uppercase">
-            Commands
-          </div>
-          <div className="max-h-48 overflow-y-auto">
-            {SLASH_COMMANDS.filter(
-              (cmd) =>
-                cmd.label.toLowerCase().includes(slashMenuQuery.toLowerCase()) ||
-                cmd.id.includes(slashMenuQuery.toLowerCase()),
-            ).map((cmd) => {
-              const Icon = cmd.icon
-              return (
-                <button
-                  key={cmd.id}
-                  type="button"
-                  onClick={() => {
-                    // Insert the command at the current cursor position
-                    const cursorPos = taRef.current?.selectionStart ?? 0
-                    const textBefore = value.slice(0, cursorPos)
-                    const textAfter = value.slice(cursorPos)
-                    const lastSlash = textBefore.lastIndexOf('/')
-                    const newTextBefore = textBefore.slice(0, lastSlash) + cmd.insertText
-                    setValue(newTextBefore + textAfter)
-                    setSlashMenuOpen(false)
-                    setSlashMenuQuery('')
-                    // Move cursor to end of inserted text
-                    setTimeout(() => {
-                      if (taRef.current) {
-                        const pos = newTextBefore.length
-                        taRef.current.setSelectionRange(pos, pos)
-                        taRef.current.focus()
-                      }
-                    }, 0)
-                  }}
-                  className="flex w-full items-center gap-2.5 rounded-md px-2 py-1.5 text-left text-[12px] transition-colors hover:bg-accent"
-                >
-                  <Icon className="text-muted-foreground size-4 shrink-0" />
-                  <div className="min-w-0 flex-1">
-                    <div className="truncate font-medium">{cmd.label}</div>
-                    <div className="text-muted-foreground truncate text-[10.5px]">{cmd.description}</div>
-                  </div>
-                </button>
-              )
-            })}
-            {SLASH_COMMANDS.filter(
-              (cmd) =>
-                cmd.label.toLowerCase().includes(slashMenuQuery.toLowerCase()) ||
-                cmd.id.includes(slashMenuQuery.toLowerCase()),
-            ).length === 0 && (
-              <div className="text-muted-foreground px-2 py-3 text-center text-[11px]">
-                No commands found
-              </div>
-            )}
-          </div>
-        </div>
+        <SlashCommandMenu
+          ref={slashMenuRef}
+          items={SLASH_COMMANDS}
+          query={slashMenuQuery}
+          selectedIndex={slashMenuIndex}
+          onSelectedIndexChange={setSlashMenuIndex}
+          onSelect={selectSlashCommand}
+        />
       )}
 
-      {/* @ mention menu */}
+      {/* @ mention menu — files + agents, grouped, with recents pinned */}
       {mentionMenuOpen && (
-        <div className="mb-2 rounded-lg border border-border/60 bg-popover p-1.5 shadow-md">
-          <div className="text-muted-foreground/80 px-2 py-1 text-[10.5px] font-medium tracking-wide uppercase">
-            Reference
-          </div>
-          <div className="max-h-48 overflow-y-auto">
-            {/* File items (caller-provided or placeholder). */}
-            {mentionFiles
-              .filter((f) => f.toLowerCase().includes(mentionMenuQuery.toLowerCase()))
-              .map((file) => (
-                <button
-                  key={file}
-                  type="button"
-                  onClick={() => {
-                    const cursorPos = taRef.current?.selectionStart ?? 0
-                    const textBefore = value.slice(0, cursorPos)
-                    const textAfter = value.slice(cursorPos)
-                    const lastAt = textBefore.lastIndexOf('@')
-                    const newTextBefore = textBefore.slice(0, lastAt) + `@${file} `
-                    setValue(newTextBefore + textAfter)
-                    setMentionMenuOpen(false)
-                    setMentionMenuQuery('')
-                    setTimeout(() => {
-                      if (taRef.current) {
-                        const pos = newTextBefore.length
-                        taRef.current.setSelectionRange(pos, pos)
-                        taRef.current.focus()
-                      }
-                    }, 0)
-                  }}
-                  className="flex w-full items-center gap-2.5 rounded-md px-2 py-1.5 text-left text-[12px] transition-colors hover:bg-accent"
-                >
-                  <FileCode className="text-muted-foreground size-4 shrink-0" />
-                  <div className="min-w-0 flex-1">
-                    <div className="truncate font-medium">{file}</div>
-                    <div className="text-muted-foreground truncate text-[10.5px]">File</div>
-                  </div>
-                </button>
-              ))}
-            {/* Real agent items from agentStore. */}
-            {agents
-              .filter((a) => a.name.toLowerCase().includes(mentionMenuQuery.toLowerCase()))
-              .map((agent) => (
-                <button
-                  key={agent.id}
-                  type="button"
-                  onClick={() => {
-                    const cursorPos = taRef.current?.selectionStart ?? 0
-                    const textBefore = value.slice(0, cursorPos)
-                    const textAfter = value.slice(cursorPos)
-                    const lastAt = textBefore.lastIndexOf('@')
-                    const newTextBefore = textBefore.slice(0, lastAt) + `@${agent.name} `
-                    setValue(newTextBefore + textAfter)
-                    setMentionMenuOpen(false)
-                    setMentionMenuQuery('')
-                    setTimeout(() => {
-                      if (taRef.current) {
-                        const pos = newTextBefore.length
-                        taRef.current.setSelectionRange(pos, pos)
-                        taRef.current.focus()
-                      }
-                    }, 0)
-                  }}
-                  className="flex w-full items-center gap-2.5 rounded-md px-2 py-1.5 text-left text-[12px] transition-colors hover:bg-accent"
-                >
-                  <Bot className="text-muted-foreground size-4 shrink-0" />
-                  <div className="min-w-0 flex-1">
-                    <div className="truncate font-medium">{agent.name}</div>
-                    <div className="text-muted-foreground truncate text-[10.5px]">Agent</div>
-                  </div>
-                </button>
-              ))}
-            {(() => {
-              const filteredFiles = mentionFiles.filter((f) =>
-                f.toLowerCase().includes(mentionMenuQuery.toLowerCase()),
-              )
-              const filteredAgents = agents.filter((a) =>
-                a.name.toLowerCase().includes(mentionMenuQuery.toLowerCase()),
-              )
-              return filteredFiles.length === 0 && filteredAgents.length === 0 && mentionMenuQuery.length > 0 ? (
-                <div className="text-muted-foreground px-2 py-3 text-center text-[11px]">
-                  No results found
-                </div>
-              ) : null
-            })()}
-          </div>
-        </div>
+        <MentionMenu
+          ref={mentionMenuRef}
+          files={mentionFileItems}
+          agents={mentionAgentItems}
+          recents={recentMentions}
+          query={mentionMenuQuery}
+          selectedIndex={mentionMenuIndex}
+          onSelectedIndexChange={setMentionMenuIndex}
+          onSelect={selectMentionItem}
+        />
       )}
 
       <textarea
