@@ -45,6 +45,14 @@ export function useTasksByProject(projectId: string | null): Task[] {
   )
 }
 
+/** Sessions of a Teams agent, newest first. */
+export function useTasksByAgent(agentId: string | null): Task[] {
+  return useStoreSelector(
+    { version: -1, value: [] },
+    () => (agentId ? tasksStore.getTasksByAgent(agentId) : []),
+  )
+}
+
 /** A single task by id. Returns `undefined` if not found. */
 export function useTask(id: string | null): Task | undefined {
   return useStoreSelector(

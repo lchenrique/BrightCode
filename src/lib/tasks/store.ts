@@ -31,6 +31,12 @@ export type Task = {
   id: string
   /** Owning project id, or null for a "loose" conversation. */
   projectId: string | null
+  /**
+   * Owning Teams-agent id, or undefined for orchestrator (Bright)
+   * conversations. When set, the task is a session of that agent and
+   * the sidebar groups it under the agent's section, not the project.
+   */
+  agentId?: string
   /** Auto-generated from the first message; user-editable later. */
   title: string
   /** Provider/model selection restored whenever this conversation is opened. */
@@ -102,6 +108,18 @@ class TasksStore {
     return this.tasks.filter((t) => t.projectId === projectId)
   }
 
+  /** All sessions of a Teams agent, newest first. */
+  getTasksByAgent(agentId: string): Task[] {
+    return this.tasks
+      .filter((t) => t.agentId === agentId)
+      .sort((a, b) => b.updatedAt - a.updatedAt)
+  }
+
+  /** Latest session of a Teams agent, or undefined. */
+  getLatestAgentTask(agentId: string): Task | undefined {
+    return this.getTasksByAgent(agentId)[0]
+  }
+
   // ── Mutations ─────────────────────────────────────────────────────────
 
   /**
@@ -113,6 +131,7 @@ class TasksStore {
     title: string
     selectedModel?: string
     selectedAccountId?: string
+    agentId?: string
   }): Task {
     const now = Date.now()
     const task: Task = {
@@ -121,6 +140,7 @@ class TasksStore {
       title: input.title,
       selectedModel: input.selectedModel,
       selectedAccountId: input.selectedAccountId,
+      ...(input.agentId ? { agentId: input.agentId } : {}),
       createdAt: now,
       updatedAt: now,
     }

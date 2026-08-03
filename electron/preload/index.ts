@@ -148,6 +148,8 @@ const projects = {
 interface TaskItem {
   id: string
   projectId: string | null
+  /** Teams agent id when this task is a session of an agent. */
+  agentId?: string
   title: string
   selectedModel?: string
   selectedAccountId?: string
@@ -162,6 +164,7 @@ const tasks = {
   create(input: {
     id?: string
     projectId: string | null
+    agentId?: string
     title: string
     selectedModel?: string
     selectedAccountId?: string
@@ -175,7 +178,7 @@ const tasks = {
   },
   update(
     id: string,
-    patch: Partial<Pick<TaskItem, 'title' | 'projectId' | 'selectedModel' | 'selectedAccountId'>>,
+    patch: Partial<Pick<TaskItem, 'title' | 'projectId' | 'agentId' | 'selectedModel' | 'selectedAccountId'>>,
   ): Promise<void> {
     return ipcRenderer.invoke(IPC.TASKS_UPDATE, id, patch)
   },

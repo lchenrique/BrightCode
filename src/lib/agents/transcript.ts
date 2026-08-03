@@ -13,6 +13,31 @@ export function agentTaskId(agent: Pick<AgentDefinition, 'id'>): string {
   return `agent-${agent.id}`
 }
 
+/**
+ * Read the legacy single-conversation transcript for an agent. Older
+ * BrightCode builds stored the orchestrator↔agent exchange under a
+ * single fixed taskId (`agent-<id>`). After the multi-session model
+ * landed, every session gets its own taskId. This helper is used to
+ * migrate the legacy transcript into a freshly-created session so
+ * the user does not lose context.
+ */
+export async function readLegacyAgentTranscript(
+  agentId: string,
+): Promise<AgentTranscriptMessage[]> {
+  const api = typeof window !== 'undefined' ? window.electronAPI : undefined
+  if (!api?.tasks) return []
+  const raw = await api.tasks.getMessages<AgentTranscriptMessage>(
+    agentTaskId({ id: agentId }),
+  )
+  return Array.isArray(raw) ? raw : []
+}
+
+export async function clearLegacyAgentTranscript(agentId: string): Promise<void> {
+  const api = typeof window !== 'undefined' ? window.electronAPI : undefined
+  if (!api?.tasks) return
+  await api.tasks.saveMessages(agentTaskId({ id: agentId }), [])
+}
+
 /** Returns the agent id embedded in an agent taskId, or null. */
 export function parseAgentTaskId(taskId: string | null | undefined): string | null {
   if (!taskId) return null
@@ -52,16 +77,25 @@ export async function readAgentTranscript(
   return Array.isArray(raw) ? raw : []
 }
 
-export async function writeAgentTranscript(
-  agentId: string,
+/**
+ * Write messages to an explicit taskId. Use this for new multi-session
+ * agents where each session owns its own task id. For the legacy single
+ * transcript keyed by `agent-<id>`, prefer `writeAgentTranscript`.
+ */
+export async function writeTaskTranscript(
+  taskId: string,
   messages: AgentTranscriptMessage[],
 ): Promise<void> {
   const api = typeof window !== 'undefined' ? window.electronAPI : undefined
   if (!api?.tasks) return
-  await api.tasks.saveMessages(
-    agentTaskId({ id: agentId }),
-    messages as unknown as unknown[],
-  )
+  await api.tasks.saveMessages(taskId, messages as unknown as unknown[])
+}
+
+export async function writeAgentTranscript(
+  agentId: string,
+  messages: AgentTranscriptMessage[],
+): Promise<void> {
+  await writeTaskTranscript(agentTaskId({ id: agentId }), messages)
 }
 
 export async function appendAgentTranscript(

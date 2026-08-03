@@ -14,6 +14,8 @@ const StoreCtor = electronStoreCwd
 export type Task = {
   id: string
   projectId: string | null
+  /** Teams agent id when this task is a session of an agent. */
+  agentId?: string
   title: string
   selectedModel?: string
   selectedAccountId?: string
@@ -39,6 +41,7 @@ export function listTasks(): Task[] {
 export function createTask(input: {
   id?: string
   projectId: string | null
+  agentId?: string
   title: string
   selectedModel?: string
   selectedAccountId?: string
@@ -49,6 +52,7 @@ export function createTask(input: {
   const task: Task = {
     id: input.id || crypto.randomUUID(),
     projectId: input.projectId,
+    ...(input.agentId ? { agentId: input.agentId } : {}),
     title: input.title,
     selectedModel: input.selectedModel,
     selectedAccountId: input.selectedAccountId,
@@ -76,7 +80,7 @@ export function removeTask(id: string): void {
 
 export function updateTask(
   id: string,
-  patch: Partial<Pick<Task, 'title' | 'projectId' | 'selectedModel' | 'selectedAccountId'>>,
+  patch: Partial<Pick<Task, 'title' | 'projectId' | 'agentId' | 'selectedModel' | 'selectedAccountId'>>,
 ): void {
   const existing = tasksStore.get('tasks')
   tasksStore.set(
@@ -111,6 +115,7 @@ export function registerTasksIpc(): void {
       _e,
       input: {
         projectId: string | null
+        agentId?: string
         title: string
         selectedModel?: string
         selectedAccountId?: string
@@ -123,7 +128,7 @@ export function registerTasksIpc(): void {
     (
       _e,
       id: string,
-      patch: Partial<Pick<Task, 'title' | 'projectId' | 'selectedModel' | 'selectedAccountId'>>,
+      patch: Partial<Pick<Task, 'title' | 'projectId' | 'agentId' | 'selectedModel' | 'selectedAccountId'>>,
     ) => updateTask(id, patch),
   )
   ipcMain.handle(IPC.TASKS_GET_MESSAGES, (_e, taskId: string) => getTaskMessages(taskId))

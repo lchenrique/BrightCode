@@ -1,4 +1,4 @@
-﻿import { useState, useCallback, useRef, useSyncExternalStore } from 'react'
+﻿import { useState, useRef } from 'react'
 import {
   Sidebar,
   SidebarContent,
@@ -37,6 +37,8 @@ import {
   Settings,
   Trash2,
   Check,
+  ChevronDown,
+  ChevronRight,
   BrainCircuit,
 } from 'lucide-react'
 import { Input } from '@/components/ui/input'
@@ -49,10 +51,11 @@ import {
   useActiveProject,
   useProjectsActions,
 } from '@/hooks/use-projects'
-import { useTasksByProject } from '@/hooks/use-tasks'
+import { useTasksByProject, useTasksByAgent } from '@/hooks/use-tasks'
+import { useAgents as useAgentsHook } from '@/hooks/use-agents'
 import { useTaskActivity } from '@/hooks/use-task-activity'
 import { AddProjectDialog } from '@/components/projects/AddProjectDialog'
-import { agentStore, type AgentDefinition } from '@/lib/agents'
+import { type AgentDefinition } from '@/lib/agents'
 import { AgentAvatar } from '@/components/ui/agent-avatar'
 import { cn } from '@/lib/utils'
 
@@ -82,31 +85,22 @@ type Agent = Pick<AgentDefinition, 'id' | 'name' | 'avatarSeed'> & { color: Agen
 
 function useAgents(): Agent[] {
   const cacheRef = useRef<Agent[]>([])
-  const subscribe = useCallback(
-    (cb: () => void) => agentStore.subscribe(cb),
-    [],
-  )
-  const getSnapshot = useCallback(() => {
-    const next = agentStore
-      .list()
-      .filter((a) => a.enabled)
-      .map((a) => ({
-        id: a.id,
-        name: a.name,
-        avatarSeed: a.avatarSeed,
-        color: pickColor(a.id),
-      }))
-    const prev = cacheRef.current
-    if (
-      prev.length === next.length &&
-      prev.every((p, i) => p.id === next[i].id && p.name === next[i].name && p.avatarSeed === next[i].avatarSeed)
-    ) {
-      return prev
-    }
-    cacheRef.current = next
-    return next
-  }, [])
-  return useSyncExternalStore(subscribe, getSnapshot, getSnapshot)
+  const enabled = useAgentsHook(true)
+  const next = enabled.map((a) => ({
+    id: a.id,
+    name: a.name,
+    avatarSeed: a.avatarSeed,
+    color: pickColor(a.id),
+  }))
+  const prev = cacheRef.current
+  if (
+    prev.length === next.length &&
+    prev.every((p, i) => p.id === next[i].id && p.name === next[i].name && p.avatarSeed === next[i].avatarSeed)
+  ) {
+    return prev
+  }
+  cacheRef.current = next
+  return next
 }
 
 export function AppSidebar({
@@ -118,6 +112,7 @@ export function AppSidebar({
   onSelectProject,
   onSelectTask,
   onSelectAgent,
+  onCreateAgentSession,
   onOpenSettings,
   onOpenCreateAgent,
   onOpenAgentSettings,
@@ -132,6 +127,12 @@ export function AppSidebar({
   /** Switch to a specific task by id. */
   onSelectTask: (id: string) => void
   onSelectAgent: (agent: Agent) => void
+  /**
+   * Always create a new session for the agent (does not reopen the
+   * latest one). Wired to the "New session" item in the agent
+   * context menu so the user gets a fresh conversation on demand.
+   */
+  onCreateAgentSession: (agent: Agent) => void
   onOpenSettings: () => void
   onOpenCreateAgent: () => void
   onOpenAgentSettings: (agent: Agent) => void
@@ -223,7 +224,9 @@ export function AppSidebar({
           </SidebarGroupContent>
         </SidebarGroup>
 
-        {/* Agent Team */}
+        {/* Agent Team — each agent is a folder of sessions, mirroring the
+            project layout. Clicking the agent opens (or creates) a new
+            session; clicking a session opens that specific thread. */}
         <SidebarGroup>
           <SidebarGroupLabel className="text-muted-foreground/70 flex items-center justify-between px-2 text-[11px] font-normal tracking-wide uppercase">
             <span>Agent Team</span>
@@ -239,10 +242,18 @@ export function AppSidebar({
           <SidebarGroupContent>
             <SidebarMenu>
               {agents.map((a) => (
-                <AgentRow
-                  key={a.name}
+                <AgentGroup
+                  key={a.id}
                   agent={a}
-                  onSelect={() => onSelectAgent(a)}
+                  activeSessionId={
+                    activeTaskId &&
+                    tasksStore.getTask(activeTaskId)?.agentId === a.id
+                      ? activeTaskId
+                      : undefined
+                  }
+                  onSelectAgent={() => onSelectAgent(a)}
+                  onCreateSession={() => onCreateAgentSession(a)}
+                  onSelectSession={(sessionId) => onSelectTask(sessionId)}
                   onOpenSettings={() => onOpenAgentSettings(a)}
                 />
               ))}
@@ -542,17 +553,31 @@ function LooseTasksGroup({
   )
 }
 
-/** Agent row with hover "â‹¯" action and right-click context menu. */
-function AgentRow({
+/**
+ * Agent folder in the sidebar: agent row + nested sessions, mirroring
+ * the project layout. Click the agent to create (or open) a fresh
+ * session. Click a session to switch to it. Right-click the agent for
+ * its options menu.
+ */
+function AgentGroup({
   agent,
-  onSelect,
+  activeSessionId,
+  onSelectAgent,
+  onCreateSession,
+  onSelectSession,
   onOpenSettings,
 }: {
   agent: Agent
-  onSelect: () => void
+  activeSessionId?: string
+  onSelectAgent: () => void
+  onCreateSession: () => void
+  onSelectSession: (sessionId: string) => void
   onOpenSettings: () => void
 }) {
   const [menuOpen, setMenuOpen] = useState(false)
+  const sessions = useTasksByAgent(agent.id)
+  const [isCollapsed, setIsCollapsed] = useState(sessions.length === 0)
+
   return (
     <SidebarMenuItem
       onContextMenu={(e) => {
@@ -561,17 +586,53 @@ function AgentRow({
       }}
     >
       <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen} modal={false}>
-        <SidebarMenuButton
-          size="default"
-          className="text-foreground/80"
-          onClick={onSelect}
-        >
-          <TeamAvatar
-            seed={agent.avatarSeed}
-            color={agent.color}
-          />
-          <span className="text-[13px]">{agent.name}</span>
-        </SidebarMenuButton>
+        <div className="group/agent flex w-full items-center">
+          <button
+            type="button"
+            aria-label={isCollapsed ? 'Expand agent sessions' : 'Collapse agent sessions'}
+            onClick={() => setIsCollapsed((c) => !c)}
+            className="text-muted-foreground hover:text-foreground -ml-1 mr-1 inline-flex size-4 shrink-0 items-center justify-center rounded transition-colors"
+            data-agent-toggle={agent.id}
+          >
+            {isCollapsed ? (
+              <ChevronRight className="size-3" />
+            ) : (
+              <ChevronDown className="size-3" />
+            )}
+          </button>
+          <SidebarMenuButton
+            size="default"
+            className="text-foreground/80 flex-1"
+            onClick={onSelectAgent}
+            data-agent-row={agent.id}
+            data-agent-name={agent.name}
+          >
+            <TeamAvatar seed={agent.avatarSeed} color={agent.color} />
+            <span className="text-[13px]">{agent.name}</span>
+            <span className="text-muted-foreground ml-auto text-[10px]">
+              {sessions.length}
+            </span>
+          </SidebarMenuButton>
+        </div>
+
+        {!isCollapsed && (
+          <ul className="border-border/40 ml-4 mr-1 mt-1 flex flex-col gap-0.5 border-l pl-2">
+            {sessions.length === 0 && (
+              <li className="text-muted-foreground/70 px-2 py-1 text-[11.5px] italic">
+                No sessions yet
+              </li>
+            )}
+            {sessions.map((session) => (
+              <li key={session.id}>
+                <AgentSessionRow
+                  session={session}
+                  active={activeSessionId === session.id}
+                  onSelect={() => onSelectSession(session.id)}
+                />
+              </li>
+            ))}
+          </ul>
+        )}
 
         <DropdownMenuTrigger asChild>
           <SidebarMenuAction showOnHover aria-label={`${agent.name} options`}>
@@ -580,6 +641,10 @@ function AgentRow({
         </DropdownMenuTrigger>
 
         <DropdownMenuContent side="right" align="start" className="min-w-40">
+          <DropdownMenuItem onSelect={onCreateSession}>
+            <Plus />
+            New session
+          </DropdownMenuItem>
           <DropdownMenuItem
             onSelect={() => console.log('[agent] pin', agent.name)}
           >
@@ -607,6 +672,40 @@ function AgentRow({
         </DropdownMenuContent>
       </DropdownMenu>
     </SidebarMenuItem>
+  )
+}
+
+function AgentSessionRow({
+  session,
+  active,
+  onSelect,
+}: {
+  session: { id: string; title: string; projectId: string | null }
+  active: boolean
+  onSelect: () => void
+}) {
+  const project = useProjects().find((p) => p.id === session.projectId)
+  return (
+    <SidebarMenuButton
+      size="sm"
+      isActive={active}
+      data-session-id={session.id}
+      data-session-active={active ? 'true' : 'false'}
+      data-session-project={session.projectId ?? 'loose'}
+      onClick={onSelect}
+      className="text-foreground/75 hover:text-foreground data-[active=true]:text-foreground h-7 px-2 text-[12.5px]"
+    >
+      <span className="truncate">{session.title}</span>
+      <span
+        className="text-muted-foreground/80 ml-auto flex items-center gap-1 text-[10px]"
+        title={project ? `Linked to ${project.label}` : 'No project'}
+      >
+        <Folder className="size-3" />
+        <span className="max-w-[80px] truncate">
+          {project?.label ?? 'Loose'}
+        </span>
+      </span>
+    </SidebarMenuButton>
   )
 }
 

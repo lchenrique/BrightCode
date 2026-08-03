@@ -8,6 +8,8 @@ import {
 } from '@/components/ui/popover'
 import type { ModelInfo } from '@/lib/providers'
 import { providerRegistry } from '@/lib/providers'
+import { useAgents } from '@/hooks/use-agents'
+import { useActiveProjectId } from '@/hooks/use-projects'
 import { cn } from '@/lib/utils'
 
 // Slash command definitions
@@ -24,6 +26,15 @@ const SLASH_COMMANDS: SlashCommand[] = [
   { id: 'search', label: 'Search', description: 'Search for text in files', icon: Search, insertText: '/search ' },
   { id: 'new-file', label: 'New file', description: 'Create a new file', icon: PlusCircle, insertText: '/new ' },
   { id: 'agent', label: 'Delegate to agent', description: 'Ask another agent for help', icon: Bot, insertText: '/delegate ' },
+]
+
+// Placeholder files shown in the @ mention menu when the caller does not
+// pass a real list. Once the workspace fs lands in the renderer, callers
+// can wire the project's actual files here.
+const DEFAULT_MENTION_FILES = [
+  'src/index.tsx',
+  'src/App.tsx',
+  'src/components/Button.tsx',
 ]
 
 export interface AttachedImage {
@@ -109,6 +120,12 @@ export interface ChatInputProps {
    * the model can't see.
    */
   supportsImages?: boolean
+  /**
+   * Optional override for the file list suggested by the @ mention menu.
+   * When omitted, falls back to a small placeholder list so the menu
+   * is never empty.
+   */
+  mentionFiles?: string[]
 }
 
 const MAX_IMAGE_BYTES = 8 * 1024 * 1024 // 8MB per image
@@ -138,6 +155,7 @@ export function ChatInput({
   onStop,
   onTypingChange,
   supportsImages = true,
+  mentionFiles: mentionFilesProp,
 }: ChatInputProps) {
   // Uncontrolled fallback for the props that callers might not wire up
   const [internalThinkingLevel, setInternalThinkingLevel] = useState<ThinkingLevel>('medium')
@@ -177,6 +195,44 @@ export function ChatInput({
   const [slashMenuQuery, setSlashMenuQuery] = useState('')
   const [mentionMenuOpen, setMentionMenuOpen] = useState(false)
   const [mentionMenuQuery, setMentionMenuQuery] = useState('')
+  // Mention menu data sources. Real agents come from agentStore so the
+  // user can mention an agent by name. Files are still placeholder until
+  // the workspace fs lands in the renderer; we keep a small fallback so
+  // the menu never looks empty.
+  const agents = useAgents()
+  // Project files for the @ mention menu. We fetch the workspace tree
+  // when the menu opens so the picker stays snappy until the user
+  // actually needs it. The active project id drives the lookup; falls
+  // back to DEFAULT_MENTION_FILES when no project is active.
+  const activeProjectId = useActiveProjectId()
+  const [workspaceFiles, setWorkspaceFiles] = useState<string[]>(DEFAULT_MENTION_FILES)
+  useEffect(() => {
+    if (!mentionMenuOpen) return
+    if (!activeProjectId || typeof window === 'undefined' || !window.electronAPI?.workspace) {
+      setWorkspaceFiles(DEFAULT_MENTION_FILES)
+      return
+    }
+    let active = true
+    void window.electronAPI.workspace.listTree(activeProjectId).then((res) => {
+      if (!active) return
+      if (!res || !('ok' in res) || !res.ok) {
+        setWorkspaceFiles(DEFAULT_MENTION_FILES)
+        return
+      }
+      const flat: string[] = []
+      const walk = (entries: Array<{ name: string; path: string; isDir: boolean }>) => {
+        for (const entry of entries) {
+          if (!entry.isDir) flat.push(entry.path)
+        }
+      }
+      walk(res.entries)
+      setWorkspaceFiles(flat.length > 0 ? flat : DEFAULT_MENTION_FILES)
+    })
+    return () => {
+      active = false
+    }
+  }, [mentionMenuOpen, activeProjectId])
+  const mentionFiles = mentionFilesProp ?? workspaceFiles
   const taRef = useRef<HTMLTextAreaElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
@@ -440,8 +496,8 @@ export function ChatInput({
             Reference
           </div>
           <div className="max-h-48 overflow-y-auto">
-            {/* File placeholder items */}
-            {['src/index.tsx', 'src/App.tsx', 'src/components/Button.tsx']
+            {/* File items (caller-provided or placeholder). */}
+            {mentionFiles
               .filter((f) => f.toLowerCase().includes(mentionMenuQuery.toLowerCase()))
               .map((file) => (
                 <button
@@ -473,19 +529,19 @@ export function ChatInput({
                   </div>
                 </button>
               ))}
-            {/* Agent placeholder items */}
-            {['backend', 'frontend', 'test']
-              .filter((a) => a.toLowerCase().includes(mentionMenuQuery.toLowerCase()))
+            {/* Real agent items from agentStore. */}
+            {agents
+              .filter((a) => a.name.toLowerCase().includes(mentionMenuQuery.toLowerCase()))
               .map((agent) => (
                 <button
-                  key={agent}
+                  key={agent.id}
                   type="button"
                   onClick={() => {
                     const cursorPos = taRef.current?.selectionStart ?? 0
                     const textBefore = value.slice(0, cursorPos)
                     const textAfter = value.slice(cursorPos)
                     const lastAt = textBefore.lastIndexOf('@')
-                    const newTextBefore = textBefore.slice(0, lastAt) + `@${agent} `
+                    const newTextBefore = textBefore.slice(0, lastAt) + `@${agent.name} `
                     setValue(newTextBefore + textAfter)
                     setMentionMenuOpen(false)
                     setMentionMenuQuery('')
@@ -501,17 +557,17 @@ export function ChatInput({
                 >
                   <Bot className="text-muted-foreground size-4 shrink-0" />
                   <div className="min-w-0 flex-1">
-                    <div className="truncate font-medium">{agent}</div>
+                    <div className="truncate font-medium">{agent.name}</div>
                     <div className="text-muted-foreground truncate text-[10.5px]">Agent</div>
                   </div>
                 </button>
               ))}
             {(() => {
-              const filteredFiles = ['src/index.tsx', 'src/App.tsx', 'src/components/Button.tsx'].filter((f) =>
+              const filteredFiles = mentionFiles.filter((f) =>
                 f.toLowerCase().includes(mentionMenuQuery.toLowerCase()),
               )
-              const filteredAgents = ['backend', 'frontend', 'test'].filter((a) =>
-                a.toLowerCase().includes(mentionMenuQuery.toLowerCase()),
+              const filteredAgents = agents.filter((a) =>
+                a.name.toLowerCase().includes(mentionMenuQuery.toLowerCase()),
               )
               return filteredFiles.length === 0 && filteredAgents.length === 0 && mentionMenuQuery.length > 0 ? (
                 <div className="text-muted-foreground px-2 py-3 text-center text-[11px]">

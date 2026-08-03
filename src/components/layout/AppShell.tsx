@@ -14,6 +14,11 @@ import { tasksStore, deriveTaskTitle } from '@/lib/tasks/store'
 import { requestProjectFileOpen } from '@/lib/projects/file-events'
 import { BashApprovalDialog } from '@/components/chat/BashApprovalDialog'
 import { agentStore } from '@/lib/agents'
+import {
+  readLegacyAgentTranscript,
+  clearLegacyAgentTranscript,
+  writeTaskTranscript,
+} from '@/lib/agents/transcript'
 
 import { SkillsView } from '@/components/skills/SkillsView'
 import { BrightMemoryView } from '@/components/bright-memory/BrightMemoryView'
@@ -33,7 +38,7 @@ import { BrightMemoryView } from '@/components/bright-memory/BrightMemoryView'
 type View =
   | { kind: 'welcome' }
   | { kind: 'task'; id: string }
-  | { kind: 'agent'; name: string; avatarSeed: string }
+  | { kind: 'agent'; agentId: string; taskId: string }
   | { kind: 'skills' }
   | { kind: 'bright-memory' }
 
@@ -93,19 +98,69 @@ export function AppShell() {
   }, [])
 
   /**
-   * Switch the view to a Teams agent's own conversation. Used by the
-   * "Open conversation" button in agent delegation cards. Resolves
-   * the agent by id (which is what we have at click time) and falls
-   * back to the welcome view if the agent is gone.
+   * Switch the view to a Teams agent's session. If the agent already
+   * has sessions, the most recently updated one is opened (so the
+   * user does not lose context). Otherwise a fresh session is created
+   * so the user can start talking right away. Used by the agent row
+   * in the sidebar and by the "Open conversation" link inside the
+   * orchestrator's delegation card. Falls back to the welcome view
+   * if the agent is gone.
    */
-  const openAgentConversation = useCallback((agentId: string) => {
-    const agent = agentStore.list().find((a) => a.id === agentId)
-    if (!agent) {
-      setView({ kind: 'welcome' })
-      return
-    }
-    setView({ kind: 'agent', name: agent.name, avatarSeed: agent.avatarSeed })
-  }, [])
+  const openAgentConversation = useCallback(
+    async (agentId: string) => {
+      const agent = agentStore.list().find((a) => a.id === agentId)
+      if (!agent) {
+        setView({ kind: 'welcome' })
+        return
+      }
+      const existing = tasksStore.getTasksByAgent(agentId)
+      if (existing.length > 0) {
+        setView({ kind: 'agent', agentId, taskId: existing[0].id })
+        return
+      }
+      // First session — pull any legacy single-conversation transcript
+      // (keyed `agent-<id>`) before the new ChatSurface mounts so the
+      // user does not see an empty composer flash before the messages
+      // land. After writing to the new taskId, drop the legacy copy so
+      // it does not haunt a future migration.
+      const legacy = await readLegacyAgentTranscript(agentId)
+      const created = tasksStore.create({
+        projectId: activeProject?.id ?? null,
+        agentId,
+        title: `${agent.name} session`,
+        selectedModel: agent.model || undefined,
+      })
+      if (legacy.length > 0) {
+        await writeTaskTranscript(created.id, legacy)
+        await clearLegacyAgentTranscript(agentId)
+      }
+      setView({ kind: 'agent', agentId, taskId: created.id })
+    },
+    [activeProject],
+  )
+
+  /**
+   * Always create a new session for an agent and switch to it.
+   * Mirrors "New chat" in a project: the user explicitly asked for a
+   * fresh conversation, so we do not silently reopen the latest one.
+   */
+  const createAgentSession = useCallback(
+    (agentId: string) => {
+      const agent = agentStore.list().find((a) => a.id === agentId)
+      if (!agent) {
+        setView({ kind: 'welcome' })
+        return
+      }
+      const created = tasksStore.create({
+        projectId: activeProject?.id ?? null,
+        agentId,
+        title: `${agent.name} session`,
+        selectedModel: agent.model || undefined,
+      })
+      setView({ kind: 'agent', agentId, taskId: created.id })
+    },
+    [activeProject],
+  )
 
   /**
    * Called by the WelcomeScreen when the user submits the first
@@ -174,9 +229,8 @@ export function AppShell() {
             }
             setView({ kind: 'task', id })
           }}
-          onSelectAgent={(agent) =>
-            setView({ kind: 'agent', name: agent.name, avatarSeed: agent.avatarSeed })
-          }
+          onSelectAgent={(agent) => openAgentConversation(agent.id)}
+          onCreateAgentSession={(agent) => createAgentSession(agent.id)}
           onOpenSettings={() => setSettingsOpen(true)}
           onOpenCreateAgent={() => setCreateAgentOpen(true)}
           onOpenAgentSettings={(agent) =>
@@ -198,9 +252,9 @@ export function AppShell() {
           )}
           {view.kind === 'agent' && (
             <AgentView
-              key={view.name}
-              agentName={view.name}
-              avatarSeed={view.avatarSeed}
+              key={view.taskId}
+              agentId={view.agentId}
+              taskId={view.taskId}
               onOpenAgentConversation={openAgentConversation}
             />
           )}

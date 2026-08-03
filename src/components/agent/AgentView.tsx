@@ -3,26 +3,26 @@ import { ChatSurface } from '@/components/chat/ChatSurface'
 import { ViewTopBar } from '@/components/layout/ViewTopBar'
 import { ProgressPanel } from '@/components/task/ProgressPanel'
 import { agentStore } from '@/lib/agents'
+import { useTask } from '@/hooks/use-tasks'
 
 export function AgentView({
-  agentName,
-  avatarSeed,
+  agentId,
+  taskId,
   onOpenAgentConversation,
 }: {
-  agentName: string
-  avatarSeed: string
+  agentId: string
+  taskId: string
   onOpenAgentConversation?: (agentId: string) => void
 }) {
   const [progressOpen, setProgressOpen] = useState(true)
 
-  const agent = agentStore
-    .list()
-    .find((a) => a.name === agentName && a.avatarSeed === avatarSeed)
+  const agent = agentStore.list().find((a) => a.id === agentId)
+  const task = useTask(taskId)
 
   if (!agent) {
     return (
       <div className="flex h-full flex-col">
-        <ViewTopBar title={agentName} />
+        <ViewTopBar title="Agent" />
         <div className="flex flex-1 items-center justify-center">
           <p className="text-muted-foreground text-[14px]">Agent not found.</p>
         </div>
@@ -30,13 +30,15 @@ export function AgentView({
     )
   }
 
+  const sessionTitle = task?.title?.trim() || `New ${agent.name} session`
+
   // Layout matches TaskView: top bar (shrink-0) + main row (flex-1). The
   // chat owns the only flex-1 column so its input can never get pushed
   // out of the viewport when the user bumps the text-size zoom.
   return (
     <div className="flex h-full flex-col">
       <ViewTopBar
-        title={agentName}
+        title={`${agent.name} · ${sessionTitle}`}
         progressOpen={progressOpen}
         onToggleProgress={() => setProgressOpen((o) => !o)}
       />
@@ -52,13 +54,15 @@ export function AgentView({
           )}
 
           <ChatSurface
-            taskId={`agent-${agent.id}`}
-            selectedModelOverride={agent.model || undefined}
+            taskId={taskId}
+            project={null}
+            selectedModelOverride={agent.model || task?.selectedModel || undefined}
             systemPromptOverride={agent.systemPrompt || undefined}
             toolFilter={
               agent.tools.length > 0 ? agent.tools : undefined
             }
             onOpenAgentConversation={onOpenAgentConversation}
+            agentSessionTaskId={taskId}
           />
         </div>
 
