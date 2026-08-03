@@ -110,65 +110,74 @@ export function WelcomeScreen({
         <SidebarTrigger className="text-muted-foreground hover:text-foreground size-8" />
       </div>
 
-      <div className="relative z-10 mx-auto flex w-full max-w-3xl flex-col px-4 sm:px-6 pt-[8vh] sm:pt-[18vh]">
-        {/* Top: centered group (brand mark, headline, input) */}
-        <div className="flex w-full flex-col items-center">
-          <div className="border-border/60 bg-card/40 mb-6 sm:mb-10 flex h-12 w-12 sm:h-14 sm:w-14 items-center justify-center rounded-xl border backdrop-blur">
-            <BrandMark />
-          </div>
-
-          <h1 className="text-foreground text-center text-2xl sm:text-[28px] font-semibold tracking-tight">
-            BrightCode makes your work easier.
-          </h1>
-
-          <div className="mt-6 sm:mt-8 w-full">
-            {hasAnyModel ? (
-              <ChatInput
-                modelGroups={modelGroups}
-                selectedModel={selectedModel}
-                onModelChange={handleModelChange}
-                onSend={handleCreateTask}
-                emptyModelMessage="Add a provider in Settings"
-                autoFocus
-              />
-            ) : (
-              <Button
-                onClick={openSettings}
-                variant="outline"
-                className="w-full"
-              >
-                <Settings className="size-3.5" />
-                Open Settings to add a provider
-              </Button>
-            )}
-          </div>
-
-          {!hasAnyModel && (
-            <div className="border-border/60 bg-card/40 mt-6 flex w-full items-center justify-between gap-4 rounded-xl border px-4 py-3 text-[13px]">
-              <div className="text-muted-foreground flex items-start gap-2">
-                <KeyRound className="mt-0.5 size-3.5 shrink-0" />
-                <span>
-                  No providers configured yet. Add one in{' '}
-                  <strong className="text-foreground/90 font-medium">
-                    Settings → Connection
-                  </strong>{' '}
-                  to start chatting.
-                </span>
-              </div>
-              <Button size="sm" variant="outline" onClick={openSettings}>
-                <Settings className="size-3.5" />
-                Open Settings
-              </Button>
-            </div>
-          )}
-
-          {/* Context bar — workspace / mode / branch dropdowns. */}
-          {hasAnyModel && activeProject && <ContextBar />}
+      {/* Top: centered group (brand mark + headline). Pinned near the top of
+       * the window so the welcome content reads as the page header. */}
+      <div className="relative z-10 mx-auto flex w-full max-w-3xl flex-col items-center px-4 pt-[8vh] sm:px-6 sm:pt-[12vh]">
+        <div className="border-border/60 bg-card/40 mb-6 sm:mb-8 flex h-12 w-12 sm:h-14 sm:w-14 items-center justify-center rounded-xl border backdrop-blur">
+          <BrandMark />
         </div>
 
-        {/* Bottom: file type buttons (always available, no project required) */}
-        <div className="mt-6 sm:mt-10 flex w-full flex-col items-center gap-3">
-          <FileTypeButtons />
+        <h1 className="text-foreground text-center text-2xl sm:text-[28px] font-semibold tracking-tight">
+          BrightCode makes your work easier.
+        </h1>
+      </div>
+
+      {/* Middle: empty-state surface that grows to fill the rest of the
+       * window. File-type buttons sit in the upper portion so they stay
+       * visible above the composer; the rest is a "ready to receive your
+       * first message" placeholder area, mirroring the chat surface's
+       * scrollable message list. */}
+      <div className="relative z-10 mx-auto flex w-full min-h-0 max-w-3xl flex-1 flex-col items-center overflow-y-auto px-4 pt-8 sm:px-6 sm:pt-10">
+        <FileTypeButtons />
+        {!hasAnyModel && (
+          <div className="border-border/60 bg-card/40 mt-6 flex w-full items-center justify-between gap-4 rounded-xl border px-4 py-3 text-[13px]">
+            <div className="text-muted-foreground flex items-start gap-2">
+              <KeyRound className="mt-0.5 size-3.5 shrink-0" />
+              <span>
+                No providers configured yet. Add one in{' '}
+                <strong className="text-foreground/90 font-medium">
+                  Settings → Connection
+                </strong>{' '}
+                to start chatting.
+              </span>
+            </div>
+            <Button size="sm" variant="outline" onClick={openSettings}>
+              <Settings className="size-3.5" />
+              Open Settings
+            </Button>
+          </div>
+        )}
+        {hasAnyModel && activeProject && (
+          <div className="mt-4 w-full">
+            <ContextBar />
+          </div>
+        )}
+      </div>
+
+      {/* Bottom: composer, pinned to the lower edge — same shape as the chat
+       * surface so the welcome screen and a new chat look identical from
+       * the input's perspective. */}
+      <div className="relative z-10 w-full shrink-0 px-4 pt-2 pb-4 sm:px-6 sm:pb-6">
+        <div className="mx-auto w-full max-w-3xl">
+          {hasAnyModel ? (
+            <ChatInput
+              modelGroups={modelGroups}
+              selectedModel={selectedModel}
+              onModelChange={handleModelChange}
+              onSend={handleCreateTask}
+              emptyModelMessage="Add a provider in Settings"
+              autoFocus
+            />
+          ) : (
+            <Button
+              onClick={openSettings}
+              variant="outline"
+              className="w-full"
+            >
+              <Settings className="size-3.5" />
+              Open Settings to add a provider
+            </Button>
+          )}
         </div>
       </div>
     </div>

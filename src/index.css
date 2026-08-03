@@ -773,6 +773,7 @@
   display: flex;
   min-height: 0;
   flex-direction: column;
+  height: 100%;
 }
 
 /* Clamp the document to the viewport so the body never grows past the
@@ -787,6 +788,8 @@ html {
 }
 
 body {
+  height: 100%;
+  margin: 0;
   overflow: hidden;
 }
 
